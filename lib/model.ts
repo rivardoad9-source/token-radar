@@ -59,6 +59,14 @@ export type Fit = {
   ts: { n: number; miss: number; flat: number };
   /** Two hundred random 70/30 splits: the same question without the calendar deciding the answer. */
   random: { n: number; miss: number; flat: number };
+  /** The tilt on age and seven-day growth, and the weight they are applied at. */
+  age: number;
+  growth: number;
+  tilt: number;
+  anchor_age: number;
+  /** The same blind test with the tilts in the price, so the page can print both. */
+  mdape_tilted: number;
+  within3_tilted: number;
   /** Every shape that was tried, scored the same blind way, so the page can show what lost. */
   candidates: { name: string; miss: number }[];
 };
@@ -101,6 +109,9 @@ export type Row = {
     exponent: number;
     tvl_usd: number;
     curve_usd: number;
+    age_tilt: number;
+    growth_tilt: number;
+    tilted_usd: number;
     clamp_low_usd: number;
     clamp_high_usd: number;
     clamped: 'low' | 'high' | 'none';
@@ -120,6 +131,10 @@ const NOT_A_COMPARABLE = new Set(['Risk Curators', 'Onchain Capital Allocator', 
 
 /** The model's clock: one snapshot, so age is measured against the day it was taken. */
 const DAY = 86_400_000;
+
+/** How much of the fitted age and growth coefficients the price applies: a stated choice, because
+ *  at full strength both raised the blind miss, and the page prints both numbers. */
+const TILT_WEIGHT = 0.35;
 
 /** The launch hands one qualifying wallet 0.001% of its value, and a farm costs three hours of
  *  hands-on work. Both are assumptions, printed on the page with the net column. */
@@ -255,9 +270,20 @@ function fitModel(peers: { f: Features; y: number }[]): Fit {
   const ssTot = peers.reduce((s, r) => s + (r.y - mean) ** 2, 0);
   const residuals = peers.map((r) => r.y - pred(weights, r.f));
 
+  // Stage two: what the size curve missed, split into how long the protocol has run with no token
+  // and how its TVL moved in the last seven days. Applied at TILT_WEIGHT, not at full strength:
+  // the page prints what full strength cost out of sample, so the weight is a stated choice.
+  const stage2 = ols(
+    peers.map((r) => ({ x: [1, r.f.lage, r.f.growth], y: r.y - pred(weights, r.f) })),
+    3,
+  ) ?? [0, 0, 0];
+  const anchorAge = median(peers.map((r) => r.f.lage));
+  const tiltLog = (f: Features, w = stage2): number => TILT_WEIGHT * (w[1]! * (f.lage - anchorAge) + w[2]! * f.growth);
+
   // Leave one out: refit without the row, predict it, keep the miss. The only honest error a
   // single snapshot can give, and 71 refits of a 5x5 system cost nothing.
   const misses: number[] = [];
+  const tiltedMisses: number[] = [];
   const looResiduals: number[] = [];
   for (let i = 0; i < peers.length; i++) {
     const others = peers.filter((_, j) => j !== i);
@@ -269,6 +295,12 @@ function fitModel(peers: { f: Features; y: number }[]): Fit {
     const miss = peers[i]!.y - pred(w, peers[i]!.f);
     looResiduals.push(miss);
     misses.push(Math.abs(10 ** miss - 1));
+    const w2 = ols(
+      others.map((r) => ({ x: [1, r.f.lage, r.f.growth], y: r.y - pred(w, r.f) })),
+      3,
+    );
+    const tilted = w2 === null ? miss : miss - tiltLog(peers[i]!.f, w2);
+    tiltedMisses.push(Math.abs(10 ** tilted - 1));
   }
 
   // The dumbest model there is: price every protocol at the peers' median market cap. If the fit
@@ -317,11 +349,18 @@ function fitModel(peers: { f: Features; y: number }[]): Fit {
     coverage: looResiduals.length > 0 ? inside / looResiduals.length : 0,
     ts: { n: tsN, miss: tsN > 0 ? median(tsMisses) : 0, flat: tsN > 0 ? median(tsFlatMisses) : 0 },
     random: randomSplit(peers, pred),
+    age: stage2[1]!,
+    growth: stage2[2]!,
+    tilt: TILT_WEIGHT,
+    anchor_age: anchorAge,
+    mdape_tilted: tiltedMisses.length > 0 ? median(tiltedMisses) : 0,
+    within3_tilted: tiltedMisses.filter((m) => m <= 2).length / Math.max(1, tiltedMisses.length),
     candidates: [
-      { name: 'size curve (shipped)', miss: median(misses) },
-      { name: '+ age term', miss: looMiss(peers, (f) => [1, f.ltvl, f.lage]) },
+      { name: 'size curve + age & growth tilt (shipped)', miss: tiltedMisses.length > 0 ? median(tiltedMisses) : 0 },
+      { name: 'size curve alone', miss: median(misses) },
+      { name: '+ age, growth at full weight', miss: looMiss(peers, (f) => [1, f.ltvl, f.lage, f.growth]) },
+      { name: '+ age, chains, growth at full weight', miss: looMiss(peers, (f) => [1, f.ltvl, f.lage, f.lch, f.growth]) },
       { name: '+ squared TVL', miss: looMiss(peers, (f) => [1, f.ltvl, f.ltvl * f.ltvl]) },
-      { name: '+ age, chains, growth', miss: looMiss(peers, (f) => [1, f.ltvl, f.lage, f.lch, f.growth]) },
     ],
   };
 }
@@ -506,6 +545,9 @@ type Placed = {
   low: number;
   high: number;
   base: number;
+  curve: number;
+  age_tilt: number;
+  growth_tilt: number;
   signal: number;
 };
 
@@ -605,9 +647,12 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
   const placed: Placed[] = universe.map((p) => {
     const age = ageDays(p, snapshot.as_of);
     const f = featuresOf(p.tvl_usd ?? 1, age, p.chains.length, p.change_7d);
-    // The whole model: one line through log TVL, held inside the multiples the peers themselves
-    // trade at.
-    const base = 10 ** (fit.intercept + fit.tvl * f.ltvl);
+    // The whole model: one line through log TVL, tilted by how long the protocol has run and how
+    // its TVL moved last week, then held inside the multiples the peers themselves trade at.
+    const curve = 10 ** (fit.intercept + fit.tvl * f.ltvl);
+    const ageTilt = 10 ** (fit.tilt * fit.age * (f.lage - fit.anchor_age));
+    const growthTilt = 10 ** (fit.tilt * fit.growth * f.growth);
+    const base = curve * ageTilt * growthTilt;
     const tvlNow = Math.max(p.tvl_usd ?? 1, 1);
     const implied = Math.max(1, Math.round(clamp(base, tvlNow * multLow, tvlNow * multHigh)));
     return {
@@ -617,6 +662,9 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
       low: Math.max(1, Math.round(implied * 10 ** fit.low)),
       high: Math.max(1, Math.round(implied * 10 ** fit.high)),
       base,
+      curve,
+      age_tilt: ageTilt,
+      growth_tilt: growthTilt,
       signal: signalBySlug.get(p.slug) ?? 50,
     };
   });
@@ -689,7 +737,10 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
         intercept: Math.round(fit.intercept * 1000) / 1000,
         exponent: Math.round(fit.tvl * 1000) / 1000,
         tvl_usd: Math.round(tvl),
-        curve_usd: Math.round(r.base),
+        curve_usd: Math.round(r.curve),
+        age_tilt: Math.round(r.age_tilt * 1000) / 1000,
+        growth_tilt: Math.round(r.growth_tilt * 1000) / 1000,
+        tilted_usd: Math.round(r.base),
         clamp_low_usd: Math.round(tvl * multLow),
         clamp_high_usd: Math.round(tvl * multHigh),
         clamped: r.base < tvl * multLow ? 'low' : r.base > tvl * multHigh ? 'high' : 'none',
@@ -727,7 +778,7 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
       as_of: snapshot.as_of,
       source: provenance(snapshot.source),
       floor_usd: snapshot.floor_usd,
-      model_version: 'radar-5',
+      model_version: 'radar-6',
       universe_size: universe.length,
       board_size: board.length,
       watchlist_size: snapshot.watchlist.length,

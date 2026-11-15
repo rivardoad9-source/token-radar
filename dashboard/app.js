@@ -57,11 +57,11 @@ function drawRule() {
   const band = (b) => `×${(10 ** b).toFixed(2)}`;
   el('rule').innerHTML =
     `<span class="k">model ${esc(H.model_version)}</span>` +
-    `<b>implied FDV = 10^(${FIT.intercept.toFixed(3)} + ${FIT.tvl.toFixed(3)} × log10 TVL)</b>` +
+    `<b>implied FDV = 10^(${FIT.intercept.toFixed(3)} + ${FIT.tvl.toFixed(3)} × log10 TVL) × age tilt × growth tilt</b>` +
     `<span class="sep">|</span><span class="k">fitted on</span><span class="v">${FIT.n} protocols that already trade</span>` +
-    `<span class="sep">|</span><span class="k">blind miss</span><span class="v">${Math.round(FIT.mdape * 100)}% vs ${Math.round(FIT.flat * 100)}% for a flat price</span>` +
+    `<span class="sep">|</span><span class="k">blind miss</span><span class="v">${Math.round(FIT.mdape_tilted * 100)}% vs ${Math.round(FIT.flat * 100)}% for a flat price</span>` +
     `<span class="sep">|</span><span class="k">band</span><span class="v">${band(FIT.low)} to ${band(FIT.high)}</span>` +
-    `<span class="sep">|</span><span class="k">dropped</span><span class="v">age, growth, chains, category offsets: each one lost its blind test</span>`;
+    `<span class="sep">|</span><span class="k">tilts at</span><span class="v">${Math.round(FIT.tilt * 100)}% of their fitted weight, and the page prints what full weight costs</span>`;
 }
 
 /** What the page claims about itself, printed from the data it just rendered. */
@@ -96,7 +96,7 @@ function drawFacts() {
     ['Pre-token', H.board_size, ''],
     ['Watchlist', `${H.watchlist_covered}/${H.watchlist_size}`, 'good'],
     ['Trading peers', H.peers, ''],
-    ['Median miss', `${Math.round(FIT.mdape * 100)}%`, 'warn'],
+    ['Median miss', `${Math.round(FIT.mdape_tilted * 100)}%`, 'warn'],
     ['Farm now', H.totals.farm, 'good'],
   ];
   el('facts').innerHTML = facts.map(([k, v, c]) => `<div><dt>${k}</dt><dd class="${c}">${esc(v)}</dd></div>`).join('');
@@ -106,15 +106,17 @@ function drawFacts() {
 
 function drawModel() {
   el('eq').innerHTML =
-    `implied FDV = 10^(<b>${FIT.intercept.toFixed(3)}</b> + <b>${FIT.tvl.toFixed(3)}</b> × log10 TVL)` +
-    `<br /><span style="color:var(--dim)">one line, one exponent, no offsets and no tilts: every term that did not survive a blind test was taken out</span>`;
+    `implied FDV = 10^(<b>${FIT.intercept.toFixed(3)}</b> + <b>${FIT.tvl.toFixed(3)}</b> × log10 TVL) × <b>${FIT.age.toFixed(2)}</b>·(log10 age − ${FIT.anchor_age.toFixed(2)}) × <b>${FIT.growth.toFixed(2)}</b>·7d growth` +
+    `<br /><span style="color:var(--dim)">size, age and one week of growth, each fitted to the snapshot; age and growth applied at ${Math.round(FIT.tilt * 100)}% strength because full strength priced worse out of sample</span>`;
 
   const mult = (b) => `×${(10 ** b).toFixed(2)}`;
   const factors = [
-    ['The curve', `Ten times the TVL raises the implied value <b>${(10 ** FIT.tvl).toFixed(2)}×</b>, not 10×: the market pays less per TVL dollar as a protocol grows. That is the whole model, and it is the only shape that held up.`],
-    ['The guard', `A shallow line will happily value a $5M protocol at $400M. Every row is held inside the multiples the ${FIT.n} trading protocols actually carry: <b>${H.multiple.low}×</b> to <b>${H.multiple.high}×</b> TVL, median <b>${H.multiple.median}×</b>.`],
+    ['The curve', `Ten times the TVL raises the implied value <b>${(10 ** FIT.tvl).toFixed(2)}×</b>, not 10×: the market pays less per TVL dollar as a protocol grows.`],
+    ['Age', `A tenfold older protocol is priced <b>${(10 ** (FIT.age * FIT.tilt)).toFixed(2)}×</b> the younger one at the strength the page applies. The fitted coefficient is ${FIT.age.toFixed(3)} per log10 year, applied at ${Math.round(FIT.tilt * 100)}%.`],
+    ['7d growth', `Every <b>+100%</b> of weekly TVL growth moves the value by <b>${(FIT.growth * FIT.tilt * 100).toFixed(1)}%</b> at the strength the page applies. The fitted sign is <b>negative</b> in this snapshot: the protocols that pumped hardest last week carry the thinnest multiples per TVL dollar, so the model credits the week, it does not reward it.`],
+    ['The guard', `A shallow line would value a $5M protocol at $400M. Every row is held inside the multiples the ${FIT.n} trading protocols actually carry: <b>${H.multiple.low}×</b> to <b>${H.multiple.high}×</b> TVL, median <b>${H.multiple.median}×</b>.`],
     ['The band', `The 10th and 90th percentile blind miss are <b>${mult(FIT.low)}</b> and <b>${mult(FIT.high)}</b>, covering <b>${Math.round(FIT.coverage * 100)}%</b> of the errors the model made on protocols it had not seen. The row prints that band, not a promise.`],
-    ['What lost', `The age term, seven-day growth, chain count and a category offset were all fitted and all scored worse out of sample. The age term also collapsed on a strictly time-ordered split, so it is gone rather than shrunk.`],
+    ['What lost', `The chain count, a squared TVL term, a category offset and a k-nearest-neighbour comps curve were all fitted and all priced worse out of sample. The table below is the test that decided it.`],
     ['What it pays', `A farm is credited with <b>0.001%</b> of the implied launch, weighted by the odds a token exists at that age, against gas and the yield given up: the net column, and the hour it buys.`],
     ['The odds', `Age buckets are counted in the snapshot itself: of every token-able protocol aged two to three years, <b>${Math.round((H.odds.find((o) => o.bucket === '2-3y')?.share ?? 0) * 100)}%</b> already hold a token. Cross-sectional, not a forecast for one protocol.`],
   ];
@@ -136,7 +138,7 @@ function drawModel() {
     `</table>`;
 
   el('caveat').textContent =
-    `Fitted on the ${FIT.n} protocols in this snapshot whose record already carries a token, a TVL and a listing date. Blind error ${Math.round(FIT.mdape * 100)}%, inside a factor of three on ${Math.round(FIT.within3 * 100)}% of them against ${Math.round(FIT.flat_within3 * 100)}% for the flat median; R² ${FIT.r2.toFixed(3)}. ` +
+    `Fitted on the ${FIT.n} protocols in this snapshot whose record already carries a token, a TVL and a listing date. Blind error ${Math.round(FIT.mdape_tilted * 100)}%, inside a factor of three on ${Math.round(FIT.within3_tilted * 100)}% of them against ${Math.round(FIT.flat_within3 * 100)}% for the flat median; R² ${FIT.r2.toFixed(3)}. ` +
     `The time-ordered split is the model's worst result and it is printed anyway: on the protocols that launched after the ones it learned from, the line loses to the flat median. That is why every number carries a band, why the board is a ranking, and why nothing here forecasts a launch date. Source: ${H.source}.`;
 }
 
@@ -309,6 +311,9 @@ function open(slug) {
       <dt>TVL, the record</dt><dd>${usdFull(r.tvl)}</dd>
       <dt>log10 of it</dt><dd>${Math.log10(Math.max(r.tvl, 1)).toFixed(3)}</dd>
       <dt>Blind curve: 10^(${r.model.intercept.toFixed(3)} + ${r.model.exponent.toFixed(3)} × log10 TVL)</dt><dd>${usdFull(r.model.curve_usd)}</dd>
+      <dt>Age tilt (${r.age === null ? 'unknown age' : `${Math.round(r.age / 30.44)} months`})</dt><dd>×${r.model.age_tilt.toFixed(3)}</dd>
+      <dt>7d growth tilt (${r.ch7 === null ? 'not reported' : pct(r.ch7)})</dt><dd>×${r.model.growth_tilt.toFixed(3)}</dd>
+      <dt>Tilted value, before the guard</dt><dd>${usdFull(r.model.tilted_usd)}</dd>
       <dt>Peers' multiple range, applied to this TVL</dt><dd>${usd(r.model.clamp_low_usd)} – ${usd(r.model.clamp_high_usd)}</dd>
       <dt>${r.model.clamped === 'none' ? 'Inside the range: the curve stands' : `Held at the ${r.model.clamped === 'low' ? 'floor' : 'ceiling'} of that range`}</dt><dd class="hl">${usdFull(r.implied)}</dd>
       <dt>Band (P10-P90 blind miss)</dt><dd>${usd(r.low)} – ${usd(r.high)}</dd>

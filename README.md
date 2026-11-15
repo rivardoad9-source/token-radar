@@ -83,6 +83,8 @@ A single static page, no network, no framework, no images:
   below-floor filters, plus token odds and net-per-hour columns
 • a monogram per protocol — initials on a colour derived from its own slug, drawn on the page, since
   the snapshot carries no brand asset and the page may fetch nothing
+• a power-law chart: the 68 trading protocols on log TVL against log market cap, the fitted line,
+  its band, and the 214 pre-token rows placed on the same axes
 • the model's equation above the board, and a panel below it with the blind tests, the guard, the
   band and a bar chart of the age-to-token curve
 • a detail drawer per protocol: the raw curve value, the clamp, the band, the odds, the airdrop, the

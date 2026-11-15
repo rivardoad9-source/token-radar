@@ -63,14 +63,17 @@ const filteredCount = await page.evaluate(() => document.querySelectorAll('#boar
 console.log('filtered rows', filteredCount);
 await shot('3-filtered');
 
-// 4. the other board: protocols whose token already trades
+// 4. the model panel: the power law on log axes, with the board placed on the fitted line
 await page.evaluate(() => {
   window.RADAR_UI.setVerdict('all');
   window.RADAR_UI.setSort('implied');
-  window.RADAR_UI.setMode('trading');
+  window.RADAR_UI.setMode('radar');
+  const box = document.getElementById('scatter');
+  const panel = box.closest('.panel');
+  window.scrollTo(0, panel.offsetTop - 6);
 });
-const liveCount = await page.evaluate(() => document.querySelectorAll('#live tbody tr').length);
-console.log('live rows', liveCount);
-await shot('4-trading');
+const dots = await page.evaluate(() => document.querySelectorAll('#scatter circle').length);
+console.log('scatter dots', dots);
+await shot('4-model');
 
 await browser.close();

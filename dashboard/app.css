@@ -331,3 +331,22 @@ th.num { text-align: right; }
   vertical-align: -4px;
 }
 tr:hover .mark { border-color: hsl(var(--h) 45% 40%); }
+
+/* the power law, drawn from the snapshot */
+.scatter svg { display: block; width: 100%; height: auto; }
+.scatter .g { stroke: rgba(255, 255, 255, 0.045); stroke-width: 1; }
+.scatter .tick { fill: #6f8296; font: 9px var(--mono); text-anchor: middle; }
+.scatter .tick.y { text-anchor: end; }
+.scatter .axis { fill: #8b9cad; font: 9px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.scatter .fit.band { stroke: rgba(99, 168, 255, 0.38); stroke-width: 1.1; stroke-dasharray: 5 5; }
+.scatter .fit.main { stroke: #63a8ff; stroke-width: 2.3; }
+.scatter .peer { fill: rgba(99, 168, 255, 0.45); }
+.scatter .pre { fill: rgba(53, 224, 140, 0.72); }
+.scatter .legend { margin: 10px 0 0; font: 11px/1.7 var(--mono); color: #8b9cad; }
+.scatter .legend .k { display: inline-block; width: 9px; height: 9px; margin: 0 5px 0 14px; border-radius: 50%; vertical-align: middle; }
+.scatter .legend .k:first-child { margin-left: 0; }
+.scatter .legend .k.peer { background: rgba(99, 168, 255, 0.55); }
+.scatter .legend .k.pre { background: rgba(53, 224, 140, 0.75); }
+.scatter .legend .k.band { background: none; border: 1px dashed rgba(99, 168, 255, 0.6); border-radius: 0; height: 0; width: 14px; }
+.scatter .legend .sep { margin: 0 8px; color: #3f4c59; }
+.scatter .legend b { color: var(--value); font-weight: 600; }

@@ -67,6 +67,8 @@ export type Fit = {
   /** The same blind test with the tilts in the price, so the page can print both. */
   mdape_tilted: number;
   within3_tilted: number;
+  /** The peers as plotted: [log10 TVL, log10 market cap] for each of them. */
+  points: number[][];
   /** Every shape that was tried, scored the same blind way, so the page can show what lost. */
   candidates: { name: string; miss: number }[];
 };
@@ -349,6 +351,7 @@ function fitModel(peers: { f: Features; y: number }[]): Fit {
     coverage: looResiduals.length > 0 ? inside / looResiduals.length : 0,
     ts: { n: tsN, miss: tsN > 0 ? median(tsMisses) : 0, flat: tsN > 0 ? median(tsFlatMisses) : 0 },
     random: randomSplit(peers, pred),
+    points: peers.map((r) => [Math.round(r.f.ltvl * 1000) / 1000, Math.round(r.y * 1000) / 1000]),
     age: stage2[1]!,
     growth: stage2[2]!,
     tilt: TILT_WEIGHT,
@@ -528,6 +531,7 @@ export type Radar = {
     multiple: { low: number; median: number; high: number };
     odds: { bucket: string; all: number; token: number; share: number }[];
     totals: { capital_usd: number; gas_usd: number; farm: number; watch: number; thin: number; pass: number };
+    scatter: { peers: number[][]; pre: number[][] };
   };
   cols: string[];
   rows: unknown[][];
@@ -795,6 +799,13 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
           return { bucket: b, all: t.all, token: t.token, share: Math.round(((t.token + 0.5) / (t.all + 1)) * 1000) / 1000 };
         }),
       totals,
+      scatter: {
+        peers: fit.points,
+        pre: board.map((r) => [
+          Math.round(Math.log10(Math.max(r.tvl_usd, 1)) * 1000) / 1000,
+          Math.round(Math.log10(Math.max(r.implied_value_usd, 1)) * 1000) / 1000,
+        ]),
+      },
     },
     cols,
     rows: board.map((r) => [

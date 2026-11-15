@@ -179,6 +179,61 @@ function drawOdds() {
     `The board uses this as the odds term in every net figure, so a farm on a young protocol is credited with less than the same farm on an old one. These are counts of a single day's snapshot, not a survival curve: no history of launches exists here, and the page does not pretend otherwise.</p>`;
 }
 
+/** The power law, drawn: the trading peers in log TVL against log value, the fitted line, the band,
+ *  and every pre-token protocol placed on the same axes. No library, no canvas, just the numbers. */
+function drawScatter() {
+  const box = el('scatter');
+  if (!box) return;
+  const peers = H.scatter.peers;
+  const pre = H.scatter.pre;
+  const W = 1060;
+  const HH = 330;
+  const L = 66;
+  const R = 16;
+  const T = 18;
+  const B = 32;
+  const all = peers.concat(pre);
+  const xs = all.map((p) => p[0]);
+  const ys = all.map((p) => p[1]);
+  const x0 = Math.floor(Math.min(...xs)) - 0.4;
+  const x1 = Math.ceil(Math.max(...xs)) + 0.4;
+  const y0 = Math.floor(Math.min(...ys)) - 0.4;
+  const y1 = Math.ceil(Math.max(...ys)) + 0.4;
+  const X = (v) => L + ((v - x0) / (x1 - x0)) * (W - L - R);
+  const Y = (v) => HH - B - ((v - y0) / (y1 - y0)) * (HH - T - B);
+  const money = (lg) => (lg >= 9 ? `$${(10 ** (lg - 9)).toFixed(0)}B` : lg >= 6 ? `$${(10 ** (lg - 6)).toFixed(0)}M` : `$${(10 ** (lg - 3)).toFixed(0)}K`);
+  const f = (v, shift = 0) => FIT.intercept + FIT.tvl * v + shift;
+
+  let grid = '';
+  for (let t = Math.ceil(x0); t <= Math.floor(x1); t++) {
+    grid += `<line class="g" x1="${X(t).toFixed(1)}" y1="${Y(y0).toFixed(1)}" x2="${X(t).toFixed(1)}" y2="${Y(y1).toFixed(1)}"/>`;
+    grid += `<text class="tick" x="${X(t).toFixed(1)}" y="${HH - 15}">${money(t)}</text>`;
+  }
+  for (let t = Math.ceil(y0); t <= Math.floor(y1); t++) {
+    grid += `<line class="g" x1="${X(x0).toFixed(1)}" y1="${Y(t).toFixed(1)}" x2="${X(x1).toFixed(1)}" y2="${Y(t).toFixed(1)}"/>`;
+    grid += `<text class="tick y" x="${L - 10}" y="${(Y(t) + 3).toFixed(1)}">${money(t)}</text>`;
+  }
+  const seg = (shift, cls) =>
+    `<line class="${cls}" x1="${X(x0).toFixed(1)}" y1="${Y(f(x0, shift)).toFixed(1)}" x2="${X(x1).toFixed(1)}" y2="${Y(f(x1, shift)).toFixed(1)}"/>`;
+  const dot = (p, cls) => `<circle class="${cls}" cx="${X(p[0]).toFixed(1)}" cy="${Y(p[1]).toFixed(1)}" r="${cls === 'peer' ? 3.1 : 2.7}"/>`;
+
+  box.innerHTML =
+    `<svg viewBox="0 0 ${W} ${HH}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="log TVL against log implied value, fitted line and band">` +
+    grid +
+    seg(FIT.low, 'fit band') +
+    seg(FIT.high, 'fit band') +
+    seg(0, 'fit main') +
+    peers.map((p) => dot(p, 'peer')).join('') +
+    pre.map((p) => dot(p, 'pre')).join('') +
+    `<text class="axis" x="${L}" y="11">implied FDV, log scale</text>` +
+    `<text class="axis" x="${(W - R).toFixed(1)}" y="${HH - 2}" text-anchor="end">TVL, log scale</text>` +
+    `</svg>` +
+    `<p class="legend"><span class="k peer"></span>${peers.length} whose token already trades` +
+    `<span class="k pre"></span>${pre.length} pre-token protocols, placed on the line` +
+    `<span class="k band"></span>the band: 10th to 90th percentile blind miss` +
+    `<span class="sep">·</span>a power law with exponent <b>${FIT.tvl.toFixed(2)}</b>: ten times the TVL is <b>${(10 ** FIT.tvl).toFixed(1)}×</b> the value</p>`;
+}
+
 function drawPlanStrip() {
   const cell = (k, n, title, note) =>
     `<div class="plan-cell ${k}"><h4>${title}</h4><b>${n}</b><p>${note}</p></div>`;
@@ -419,6 +474,7 @@ drawFacts();
 drawRule();
 drawProof();
 drawModel();
+drawScatter();
 drawOdds();
 drawPlanStrip();
 drawControls();

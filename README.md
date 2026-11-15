@@ -81,6 +81,8 @@ A single static page, no network, no framework, no images:
 
 • a board sorted by implied value, with search, category, chain, sort, plan and watchlist /
   below-floor filters, plus token odds and net-per-hour columns
+• a monogram per protocol — initials on a colour derived from its own slug, drawn on the page, since
+  the snapshot carries no brand asset and the page may fetch nothing
 • the model's equation above the board, and a panel below it with the blind tests, the guard, the
   band and a bar chart of the age-to-token curve
 • a detail drawer per protocol: the raw curve value, the clamp, the band, the odds, the airdrop, the

@@ -304,3 +304,30 @@ th.num { text-align: right; }
 .subline { display: block; color: var(--dim); font-size: 10px; margin-top: 1px; }
 .odds-cell { color: var(--text); }
 .odds-cell span { display: block; color: var(--dim); font-size: 10px; }
+
+/* the protocol's own mark: initials on a colour derived from its slug, no asset to fetch */
+.mark {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-right: 7px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: 600 8.5px/1 var(--mono);
+  letter-spacing: 0.02em;
+  color: hsl(var(--h) 62% 72%);
+  background: hsl(var(--h) 42% 15%);
+  border: 1px solid hsl(var(--h) 38% 27%);
+  vertical-align: middle;
+}
+.mark.big {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  font-size: 11px;
+  margin-right: 9px;
+  vertical-align: -4px;
+}
+tr:hover .mark { border-color: hsl(var(--h) 45% 40%); }

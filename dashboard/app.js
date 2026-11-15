@@ -50,6 +50,23 @@ const pctOf = (v) => `${(v * 100).toFixed(1)}%`;
 const sign = (v, d = 3) => (v >= 0 ? `+ ${v.toFixed(d)}` : `− ${Math.abs(v).toFixed(d)}`);
 const cohort = (d) => (d === null || d === undefined ? 'unknown' : d < 365 ? 'under 1y' : d < 730 ? '1-2y' : d < 1095 ? '2-3y' : d < 1825 ? '3-5y' : '5y+');
 const signed = (n) => `${n < 0 ? '−' : '+'}$${Math.abs(n).toFixed(2)}`;
+/** A protocol's own colour and monogram, derived from its slug: the snapshot names no brand asset,
+ *  and a page that cannot fetch one draws its own. Same slug, same mark, every build. */
+const hueOf = (s) => {
+  let h = 7;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+};
+const initialsOf = (n) =>
+  n
+    .replace(/[^A-Za-z0-9 ]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0].toUpperCase())
+    .join('');
+const markOf = (r, size = '') =>
+  `<span class="mark${size ? ` ${size}` : ''}" style="--h:${hueOf(r.slug)}">${initialsOf(r.name)}</span>`;
 
 /* ---------- the model's equation, above the board ---------- */
 
@@ -240,6 +257,7 @@ function drawBoard() {
       (r) => `<tr data-slug="${esc(r.slug)}"${state.open === r.slug ? ' class="active"' : ''}>
       <td class="num rank">${r.rank}</td>
       <td><span class="tier ${r.tier}">${r.tier}</span><span class="who" style="display:inline-flex">
+        ${markOf(r)}
         <span class="n">${esc(r.name)}</span>
         <span class="s">${esc(r.slug)}${r.wl ? ' · <span class="wl">watchlist</span>' : ''}</span></span></td>
       <td><span class="chip">${esc(r.category)}</span></td>
@@ -299,7 +317,7 @@ function open(slug) {
     : `${(r.chains || []).slice(0, 3).join(', ')} +${(r.chains || []).length - 3}`;
 
   el('drawerBody').innerHTML = `
-    <h2>${esc(r.name)}</h2>
+    <h2>${markOf(r, 'big')}${esc(r.name)}</h2>
     <p class="sub">${esc(r.category)} · ${esc(chainLine)} · rank ${r.rank} of ${rows.length} · tier ${r.tier}${r.wl ? ' · <span style="color:var(--value)">on the watchlist</span>' : ''}</p>
     <p class="big"><strong>${usd(r.implied)}</strong><em>implied FDV if it issued a token · ${r.multiple.toFixed(2)}× its ${usd(r.tvl)} of TVL</em></p>
     <div class="band2"><i style="left:${at(r.low).toFixed(1)}%;width:${Math.max(at(r.high) - at(r.low), 1).toFixed(1)}%"></i><u style="left:${at(r.implied).toFixed(1)}%"></u></div>

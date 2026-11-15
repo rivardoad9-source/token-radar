@@ -15,7 +15,7 @@ const shotDir = resolve(process.argv[3] ?? 'screenshots');
 const pageUrl = pathToFileURL(join(outDir, 'dashboard', 'index.html')).href;
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({ viewport: { width: 1440, height: 1040 }, deviceScaleFactor: 1 });
 await page.goto(pageUrl, { waitUntil: 'load' });
 await page.waitForSelector('#board tbody tr');
 
@@ -30,16 +30,18 @@ const shot = async (name) => {
 await page.evaluate(() => { window.RADAR_UI.close(); window.RADAR_UI.setMode('radar'); });
 await shot('1-board');
 
-// 2. one protocol's detail view: the drawer over the board, plan included
+// 2. one protocol's detail view: the drawer over the board, the arithmetic and the plan included.
+// The row is a farm verdict inside the top twenty, so the shot shows the drawer doing real work.
 const detail = await page.evaluate(() => {
   const trs = [...document.querySelectorAll('#board tbody tr')];
-  const pick = trs[2] ?? trs[0];
+  const pick = trs.slice(0, 20).find((tr) => tr.querySelector('.verdict.farm')) ?? trs[0];
   window.RADAR_UI.open(pick.dataset.slug);
   const drawer = document.getElementById('drawer');
   const body = document.getElementById('drawerBody');
   const plan = body.querySelector('.steps');
   return {
     slug: pick.dataset.slug,
+    pick: pick.querySelector('.n')?.textContent,
     planSteps: plan ? plan.children.length : 0,
     drawerScrolls: drawer.scrollHeight > drawer.clientHeight + 1,
     lastStepVisible: plan ? plan.lastElementChild.getBoundingClientRect().bottom <= drawer.getBoundingClientRect().bottom : false,
@@ -49,12 +51,12 @@ console.log('detail', JSON.stringify(detail));
 await page.waitForTimeout(320);
 await shot('2-detail');
 
-// 3. a real filter: one category, sorted by launch signal
+// 3. a real filter: only the protocols the page says to farm now, sorted by launch signal
 await page.evaluate(() => {
   window.RADAR_UI.close();
   window.RADAR_UI.setMode('radar');
   window.RADAR_UI.setView('all');
-  window.RADAR_UI.setCategory('Lending');
+  window.RADAR_UI.setVerdict('farm');
   window.RADAR_UI.setSort('signal');
 });
 const filteredCount = await page.evaluate(() => document.querySelectorAll('#board tbody tr').length);
@@ -63,7 +65,7 @@ await shot('3-filtered');
 
 // 4. the other board: protocols whose token already trades
 await page.evaluate(() => {
-  window.RADAR_UI.setCategory('all');
+  window.RADAR_UI.setVerdict('all');
   window.RADAR_UI.setSort('implied');
   window.RADAR_UI.setMode('trading');
 });

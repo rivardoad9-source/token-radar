@@ -3,17 +3,17 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Token Radar: pre-token protocols ranked by implied value</title>
+<title>Token Radar: pre-token protocols priced off the ones that already trade</title>
 <link rel="stylesheet" href="app.css" />
 </head>
 <body>
 <header class="masthead">
-  <div class="wrap masthead-row">
+  <div class="wrap head-row">
     <div class="brand">
-      <span class="sweep" aria-hidden="true"></span>
+      <span class="scope" aria-hidden="true"><i></i></span>
       <div>
         <h1>Token Radar</h1>
-        <p class="tagline">Protocols with no token yet, ranked by what the market already pays per TVL dollar in their category.</p>
+        <p class="thesis">The snapshot holds two kinds of protocol: the ones the market already prices, and the ones with no token yet. Each of the second group is valued by fitting the first: TVL, age, chains and seven-day growth, against what the market actually pays. The model never scores a protocol that already trades.</p>
       </div>
     </div>
     <dl class="facts" id="facts"></dl>
@@ -26,24 +26,32 @@
     <button data-mode="trading">Already trading <b id="tabLive">-</b></button>
   </nav>
 
+  <p class="rule" id="rule"></p>
+
   <div id="radarView">
     <section class="controls" aria-label="Filters">
-      <label class="field grow">
-        <span>Search</span>
-        <input id="q" type="search" placeholder="protocol, category, chain" autocomplete="off" />
-      </label>
+      <label class="field grow"><span>Search</span>
+        <input id="q" type="search" placeholder="protocol, category, chain" autocomplete="off" /></label>
       <label class="field"><span>Category</span><select id="cat"></select></label>
       <label class="field"><span>Chain</span><select id="chain"></select></label>
       <label class="field"><span>Sort</span><select id="sort">
         <option value="implied">Implied value</option>
         <option value="signal">Launch signal</option>
+        <option value="multiple">Implied / TVL</option>
         <option value="tvl">TVL</option>
         <option value="growth">7d growth</option>
+        <option value="cost">Plan cost</option>
         <option value="age">Age</option>
-        <option value="multiple">Implied / TVL</option>
       </select></label>
-      <div class="field"><span>Show</span>
-        <div class="seg" id="view" role="group" aria-label="Board view">
+      <label class="field"><span>Plan</span><select id="verdict">
+        <option value="all">Any verdict</option>
+        <option value="farm">Farm now</option>
+        <option value="watch">Watch</option>
+        <option value="thin">Thin</option>
+        <option value="pass">Pass</option>
+      </select></label>
+      <div class="field"><span>Rows</span>
+        <div class="seg" id="view" role="group" aria-label="Row filter">
           <button data-view="all" class="on">All</button>
           <button data-view="watchlist">Watchlist</button>
           <button data-view="early">Below floor</button>
@@ -56,9 +64,15 @@
     <section class="panel">
       <table class="board" id="board">
         <thead><tr>
-          <th class="num">#</th><th>Protocol</th><th>Category</th><th>Chains</th>
-          <th class="num">TVL</th><th class="num">7d</th><th class="num">Age</th>
-          <th class="sig">Signal</th><th class="num">Implied FDV</th>
+          <th class="num">#</th>
+          <th>Protocol</th>
+          <th>Category</th>
+          <th class="num">TVL</th>
+          <th class="num">7d</th>
+          <th class="num">Age</th>
+          <th>Signal</th>
+          <th class="num">Implied FDV <span class="thnote">band</span></th>
+          <th class="num">Plan</th>
         </tr></thead>
         <tbody></tbody>
       </table>
@@ -67,7 +81,7 @@
   </div>
 
   <section class="panel live-panel" id="liveView" hidden>
-    <h2>Already trading <span class="hint">the snapshot records a token for these: market cap is the market's number, never the model's</span></h2>
+    <h2>Already trading <span class="hint">· the snapshot carries a token for these, so market cap is the market's own number and the model never scores them</span></h2>
     <p class="livenote" id="livenote"></p>
     <table class="board compact" id="live">
       <thead><tr><th>Protocol</th><th>Category</th><th>Chains</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">MCap / TVL</th><th class="num">7d</th></tr></thead>
@@ -75,13 +89,19 @@
     </table>
   </section>
 
-  <section class="panel model-panel" id="modelPanel">
-    <h2>How implied value is built</h2>
-    <p class="formula">
-      implied = TVL × <b>comparable FDV/TVL</b> × <b>growth</b> × <b>maturity</b> × <b>chain spread</b>
-    </p>
-    <div class="model-grid" id="modelGrid"></div>
-    <p class="note" id="modelNote"></p>
+  <section class="model-panel" id="modelPanel">
+    <div class="panel">
+      <h2>The model, fitted on the snapshot <span class="hint">not chosen by hand, and not hidden</span></h2>
+      <div class="model-body">
+        <p class="eq" id="eq"></p>
+        <ul class="factors" id="factors"></ul>
+        <p class="caveat" id="caveat"></p>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>The plans, priced <span class="hint">what it costs to farm, and where gas eats the position</span></h2>
+      <div class="plan-strip" id="planStrip"></div>
+    </div>
   </section>
 </main>
 

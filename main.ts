@@ -83,8 +83,9 @@ writeFileSync(join(out, 'dossier.json'), buildDossier(out, {
 }));
 
 const watchlistRows = board.filter((r) => r.in_watchlist).length;
+const fit = radar.head.fit;
 process.stdout.write(
-  `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist (${watchlistRows} ranked), ${board.length} rows scored (${radar.early_size} below the floor, ${radar.live_size} live set aside)\n` +
-    `token radar: model ${radar.model_version}, comparable FDV/TVL ${radar.comparables.overall}\n` +
+  `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist (${watchlistRows} ranked), ${board.length} rows scored (${radar.early_size} below the floor, ${radar.head.excluded} set aside)\n` +
+    `token radar: model ${radar.head.model_version}, fitted on ${fit.n} trading protocols: log10(mcap) = ${fit.intercept.toFixed(3)} + ${fit.tvl.toFixed(3)}·log10(TVL) ${fit.age.toFixed(3)}·log10(age) ${fit.chains.toFixed(3)}·log10(chains) + ${fit.growth.toFixed(3)}·growth, R² ${fit.r2.toFixed(3)}, leave-one-out error ${(fit.mdape * 100).toFixed(0)}%\n` +
     `token radar: wrote board.json, data.js, dashboard (${pages.length} files), screenshots (${shots.length} images) and dossier.json to ${out}\n`,
 );

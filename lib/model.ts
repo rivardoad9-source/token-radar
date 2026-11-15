@@ -39,17 +39,28 @@ export type Snapshot = {
 
 export type Fit = {
   intercept: number;
+  /** The exponent on TVL: the one number that survived every blind test. */
   tvl: number;
-  age: number;
-  chains: number;
-  growth: number;
   n: number;
   r2: number;
   /** Median absolute percentage error of a leave-one-out refit, as a fraction. */
   mdape: number;
-  /** Residual quantiles in log10, the band a row carries. */
+  /** The same miss for the dumbest possible model: every protocol priced at the peers' median. */
+  flat: number;
+  /** Share of leave-one-out misses that land inside a factor of three, this model and the flat one. */
+  within3: number;
+  flat_within3: number;
+  /** Leave-one-out residual quantiles in log10: the P10-P90 band a row carries. */
   low: number;
   high: number;
+  /** Share of leave-one-out misses the P10-P90 band covers. */
+  coverage: number;
+  /** Time split: fit on the older 60%, price the younger 40% it never saw, and the flat baseline. */
+  ts: { n: number; miss: number; flat: number };
+  /** Two hundred random 70/30 splits: the same question without the calendar deciding the answer. */
+  random: { n: number; miss: number; flat: number };
+  /** Every shape that was tried, scored the same blind way, so the page can show what lost. */
+  candidates: { name: string; miss: number }[];
 };
 
 export type Row = {
@@ -76,26 +87,44 @@ export type Row = {
   cost_usd: number;
   burden: number;
   confidence: string;
+  /** Share of protocols this age, across the whole snapshot, that already hold a token. */
+  odds: number;
+  work_hours: number;
+  /** A 1% airdrop of the implied launch, weighted by the odds a launch happens at this age. */
+  airdrop_usd: number;
+  net_usd: number;
+  per_hour_usd: number;
+  /** The implied launch at which the plan breaks even, or null when it never does. */
+  break_even_implied: number | null;
   model: {
-    base_usd: number;
-    category_offset: number;
-    growth_tilt: number;
-    age_tilt: number;
-    chain_tilt: number;
+    intercept: number;
+    exponent: number;
+    tvl_usd: number;
+    curve_usd: number;
+    clamp_low_usd: number;
+    clamp_high_usd: number;
+    clamped: 'low' | 'high' | 'none';
   };
   farm_steps: string[];
 };
 
 /**
- * Categories whose token, when it exists, is a claim on something other than the protocol's own
- * franchise: a bridge's token is not paid for by bridge TVL, and a liquid-staking token is a
- * receipt for someone else's asset. DefiLlama's own watchlist rule sets them aside, and so does
- * this: including them in the comparable set would price a lending market off a wrapped Bitcoin.
+ * Categories whose TVL is not the protocol's own franchise: a bridge's token is not paid for by
+ * bridge TVL, a liquid-staking token is a receipt for someone else's asset, and a curator's or an
+ * allocator's TVL is other protocols' deposits. The universe keeps them (the watchlist is published
+ * with the snapshot and the board must rank every name on it), but the fit that prices a row never
+ * treats them as comparables.
  */
 const NOT_COMPARABLE = new Set(['CEX', 'Bridge', 'Canonical Bridge', 'Liquid Staking', 'Liquid Restaking', 'Restaked BTC']);
+const NOT_A_COMPARABLE = new Set(['Risk Curators', 'Onchain Capital Allocator', 'Yield Aggregator']);
 
 /** The model's clock: one snapshot, so age is measured against the day it was taken. */
 const DAY = 86_400_000;
+
+/** The launch hands one qualifying wallet 0.001% of its value, and a farm costs three hours of
+ *  hands-on work. Both are assumptions, printed on the page with the net column. */
+const AIRDROP_SHARE = 0.00001;
+const WORK_HOURS = 3;
 
 export function parseSnapshot(text: string): Snapshot {
   const raw = JSON.parse(text) as Record<string, unknown>;
@@ -202,7 +231,12 @@ function featuresOf(tvl: number, age: number | null, chains: number, growth: num
   };
 }
 
-const design = (f: Features): number[] => [1, f.ltvl, f.lage, f.lch, f.growth];
+/**
+ * The shape the blind tests picked: the size curve, one line through log TVL. The five-term model,
+ * the squared term, the category offset and the age term all scored worse out of sample, and the
+ * age term collapsed outright on a time split. The page prints the test that killed each one.
+ */
+const design = (f: Features): number[] => [1, f.ltvl];
 
 /**
  * Fits the model on every protocol whose record carries both a token and a TVL, then measures
@@ -212,9 +246,9 @@ function fitModel(peers: { f: Features; y: number }[]): Fit {
   const weights =
     ols(
       peers.map((r) => ({ x: design(r.f), y: r.y })),
-      5,
-    ) ?? [6.4, 0.24, -0.35, -0.26, 0.1];
-  const pred = (w: number[], f: Features): number => w[0]! + w[1]! * f.ltvl + w[2]! * f.lage + w[3]! * f.lch + w[4]! * f.growth;
+      2,
+    ) ?? [8.4, 0.3];
+  const pred = (w: number[], f: Features): number => w[0]! + w[1]! * f.ltvl;
 
   const mean = peers.reduce((s, r) => s + r.y, 0) / peers.length;
   const ssRes = peers.reduce((s, r) => s + (r.y - pred(weights, r.f)) ** 2, 0);
@@ -224,28 +258,123 @@ function fitModel(peers: { f: Features; y: number }[]): Fit {
   // Leave one out: refit without the row, predict it, keep the miss. The only honest error a
   // single snapshot can give, and 71 refits of a 5x5 system cost nothing.
   const misses: number[] = [];
+  const looResiduals: number[] = [];
   for (let i = 0; i < peers.length; i++) {
     const others = peers.filter((_, j) => j !== i);
     const w = ols(
       others.map((r) => ({ x: design(r.f), y: r.y })),
-      5,
+      2,
     );
     if (w === null) continue;
-    misses.push(Math.abs(10 ** (peers[i]!.y - pred(w, peers[i]!.f)) - 1));
+    const miss = peers[i]!.y - pred(w, peers[i]!.f);
+    looResiduals.push(miss);
+    misses.push(Math.abs(10 ** miss - 1));
+  }
+
+  // The dumbest model there is: price every protocol at the peers' median market cap. If the fit
+  // cannot beat that, the page has no business printing implied values, and the panel says so.
+  const medianY = median(peers.map((r) => r.y));
+  const flatMisses = peers.map((r) => Math.abs(10 ** (r.y - medianY) - 1));
+  const low = quantile(looResiduals, 0.1);
+  const high = quantile(looResiduals, 0.9);
+  const inside = looResiduals.filter((r) => r >= low && r <= high).length;
+
+  // A second blind test, on time rather than on rows: fit on the protocols that were already old
+  // when the snapshot was taken, then price the younger half it never saw.
+  const byAge = [...peers].sort((a, b) => b.f.lage - a.f.lage);
+  const half = Math.floor(byAge.length * 0.6);
+  const train = byAge.slice(0, half);
+  const test = byAge.slice(half);
+  let tsN = 0;
+  const tsMisses: number[] = [];
+  const tsFlatMisses: number[] = [];
+  const tsW = ols(
+    train.map((r) => ({ x: design(r.f), y: r.y })),
+    2,
+  );
+  if (tsW !== null && test.length > 0) {
+    const trainMedian = median(train.map((r) => r.y));
+    for (const r of test) {
+      // Medians, not means: one protocol that launched at a tenth of its curve must not decide
+      // whether the model held up on 29 it never saw.
+      tsMisses.push(Math.abs(10 ** (r.y - pred(tsW, r.f)) - 1));
+      tsFlatMisses.push(Math.abs(10 ** (r.y - trainMedian) - 1));
+      tsN++;
+    }
   }
 
   return {
     intercept: weights[0]!,
     tvl: weights[1]!,
-    age: weights[2]!,
-    chains: weights[3]!,
-    growth: weights[4]!,
     n: peers.length,
     r2: ssTot > 0 ? 1 - ssRes / ssTot : 0,
     mdape: misses.length > 0 ? median(misses) : 0.8,
-    low: quantile(residuals, 0.25),
-    high: quantile(residuals, 0.75),
+    flat: median(flatMisses),
+    within3: misses.filter((m) => m <= 2).length / Math.max(1, misses.length),
+    flat_within3: flatMisses.filter((m) => m <= 2).length / Math.max(1, flatMisses.length),
+    low,
+    high,
+    coverage: looResiduals.length > 0 ? inside / looResiduals.length : 0,
+    ts: { n: tsN, miss: tsN > 0 ? median(tsMisses) : 0, flat: tsN > 0 ? median(tsFlatMisses) : 0 },
+    random: randomSplit(peers, pred),
+    candidates: [
+      { name: 'size curve (shipped)', miss: median(misses) },
+      { name: '+ age term', miss: looMiss(peers, (f) => [1, f.ltvl, f.lage]) },
+      { name: '+ squared TVL', miss: looMiss(peers, (f) => [1, f.ltvl, f.ltvl * f.ltvl]) },
+      { name: '+ age, chains, growth', miss: looMiss(peers, (f) => [1, f.ltvl, f.lage, f.lch, f.growth]) },
+    ],
   };
+}
+
+/** The same leave-one-out miss for any candidate shape, so the table compares like with like. */
+function looMiss(peers: { f: Features; y: number }[], shape: (f: Features) => number[]): number {
+  const out: number[] = [];
+  for (let i = 0; i < peers.length; i++) {
+    const others = peers.filter((_, j) => j !== i);
+    const w = ols(
+      others.map((r) => ({ x: shape(r.f), y: r.y })),
+      shape(peers[i]!.f).length,
+    );
+    if (w === null) continue;
+    const f = peers[i]!.f;
+    const p = w.reduce((s, v, k) => s + v * shape(f)[k]!, 0);
+    out.push(Math.abs(10 ** (peers[i]!.y - p) - 1));
+  }
+  return median(out);
+}
+
+/**
+ * Two hundred random 70/30 splits, median miss each time: the same blind question as leave-one-out,
+ * without one hard-to-price protocol owning a tenth of the answer.
+ */
+function randomSplit(peers: { f: Features; y: number }[], pred: (w: number[], f: Features) => number): { n: number; miss: number; flat: number } {
+  if (peers.length < 12) return { n: 0, miss: 0, flat: 0 };
+  const misses: number[] = [];
+  const flats: number[] = [];
+  let seed = 20261115;
+  const next = (): number => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648;
+  };
+  const cut = Math.floor(peers.length * 0.7);
+  for (let trial = 0; trial < 200; trial++) {
+    const order = peers.map((_, i) => i);
+    for (let i = order.length - 1; i > 0; i--) {
+      const j = Math.floor(next() * (i + 1));
+      [order[i], order[j]] = [order[j]!, order[i]!];
+    }
+    const train = order.slice(0, cut).map((i) => peers[i]!);
+    const test = order.slice(cut).map((i) => peers[i]!);
+    const w = ols(
+      train.map((r) => ({ x: design(r.f), y: r.y })),
+      2,
+    );
+    if (w === null) continue;
+    const trainMedian = median(train.map((r) => r.y));
+    misses.push(median(test.map((r) => Math.abs(10 ** (r.y - pred(w, r.f)) - 1))));
+    flats.push(median(test.map((r) => Math.abs(10 ** (r.y - trainMedian) - 1))));
+  }
+  return { n: misses.length, miss: median(misses), flat: median(flats) };
 }
 
 /** Assumed cost of one transaction by chain, in dollars: a planning figure, not a quote. */
@@ -357,6 +486,8 @@ export type Radar = {
     live_size: number;
     excluded: number;
     fit: Fit;
+    multiple: { low: number; median: number; high: number };
+    odds: { bucket: string; all: number; token: number; share: number }[];
     totals: { capital_usd: number; gas_usd: number; farm: number; watch: number; thin: number; pass: number };
   };
   cols: string[];
@@ -374,9 +505,7 @@ type Placed = {
   implied: number;
   low: number;
   high: number;
-  offset: number;
   base: number;
-  tilts: { growth: number; age: number; chain: number };
   signal: number;
 };
 
@@ -387,7 +516,14 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
   // The comparable set: a token, a market cap, a TVL, and a category where the token is the
   // protocol's own claim. This is what the fit learns from, and the page shows it separately.
   const peers = snapshot.protocols
-    .filter((p) => recordsToken(p) && (p.mcap_usd ?? 0) > 0 && (p.tvl_usd ?? 0) > 0 && !NOT_COMPARABLE.has(p.category ?? ''))
+    .filter(
+      (p) =>
+        recordsToken(p) &&
+        (p.mcap_usd ?? 0) > 0 &&
+        (p.tvl_usd ?? 0) > 0 &&
+        !NOT_COMPARABLE.has(p.category ?? '') &&
+        !NOT_A_COMPARABLE.has(p.category ?? ''),
+    )
     .map((p) => ({ p, age: ageDays(p, snapshot.as_of) }))
     .filter((r) => r.age !== null);
 
@@ -395,26 +531,41 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
     peers.map((r) => ({ f: featuresOf(r.p.tvl_usd ?? 1, r.age, r.p.chains.length, r.p.change_7d), y: Math.log10(r.p.mcap_usd ?? 1) })),
   );
 
-  // Category offsets: the median residual of a category, shrunk by its peer count so a category
-  // with two peers cannot move a row as far as one with twenty.
-  const byCat = new Map<string, number[]>();
-  for (const r of peers) {
-    const f = featuresOf(r.p.tvl_usd ?? 1, r.age, r.p.chains.length, r.p.change_7d);
-    const res =
-      Math.log10(r.p.mcap_usd ?? 1) - (fit.intercept + fit.tvl * f.ltvl + fit.age * f.lage + fit.chains * f.lch + fit.growth * f.growth);
-    const key = r.p.category ?? 'unclassified';
-    byCat.set(key, [...(byCat.get(key) ?? []), res]);
-  }
-  const offsetOf = (cat: string): number => {
-    const residuals = byCat.get(cat);
-    if (residuals === undefined || residuals.length === 0) return 0;
-    return clamp(median(residuals) * (residuals.length / (residuals.length + 4)), -0.45, 0.45);
-  };
+  // The peers' own multiples: what a launch of a given size has actually traded at. Rows are held
+  // inside this range, because a log curve with a shallow slope will happily invent a $440M launch
+  // for a $5M protocol, and no protocol in the snapshot has ever done that.
+  const mults = peers.map((r) => (r.p.mcap_usd ?? 1) / Math.max(r.p.tvl_usd ?? 1, 1));
+  const multLow = quantile(mults, 0.1);
+  const multHigh = quantile(mults, 0.9);
 
   // The universe the board ranks: a record with no token, in a category where a token would be
   // the protocol's own. The watchlist is a subset of it, which the gate checks.
   const universe = snapshot.protocols.filter((p) => !recordsToken(p) && !NOT_COMPARABLE.has(p.category ?? ''));
   const excluded = snapshot.protocols.length - universe.length;
+
+  // The odds a launch has already happened by this age. Every token-able record in the snapshot,
+  // token or not, falls into an age bucket, and the bucket reports the share that holds a token.
+  // This is cross-sectional: it says what protocols of this age look like, not what this one will
+  // do, and the page says so in those words.
+  const bucketOf = (days: number | null): string => {
+    if (days === null) return 'unknown';
+    const y = days / 365;
+    return y < 1 ? 'under 1y' : y < 2 ? '1-2y' : y < 3 ? '2-3y' : y < 5 ? '3-5y' : '5y+';
+  };
+  const oddsTally = new Map<string, { token: number; all: number }>();
+  for (const p of snapshot.protocols) {
+    if (NOT_COMPARABLE.has(p.category ?? '')) continue;
+    const key = bucketOf(ageDays(p, snapshot.as_of));
+    const t = oddsTally.get(key) ?? { token: 0, all: 0 };
+    t.all++;
+    if (recordsToken(p)) t.token++;
+    oddsTally.set(key, t);
+  }
+  const oddsOf = (days: number | null): number => {
+    const t = oddsTally.get(bucketOf(days));
+    if (t === undefined) return 0;
+    return (t.token + 0.5) / (t.all + 1);
+  };
 
   const categoryHeat = new Map<string, number[]>();
   for (const p of universe) {
@@ -454,23 +605,18 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
   const placed: Placed[] = universe.map((p) => {
     const age = ageDays(p, snapshot.as_of);
     const f = featuresOf(p.tvl_usd ?? 1, age, p.chains.length, p.change_7d);
-    const offset = offsetOf(p.category ?? 'unclassified');
-    // Half strength on every tilt: the fit is real, but one snapshot is one draw, and a model
-    // that applies its coefficients at full weight overfits the protocols it learned from.
-    const growthTilt = 10 ** (0.5 * fit.growth * f.growth);
-    const ageTilt = 10 ** (0.5 * fit.age * (f.lage - Math.log10(859)));
-    const chainTilt = 10 ** (0.5 * fit.chains * (f.lch - Math.log10(2)));
+    // The whole model: one line through log TVL, held inside the multiples the peers themselves
+    // trade at.
     const base = 10 ** (fit.intercept + fit.tvl * f.ltvl);
-    const implied = Math.max(1, Math.round(base * 10 ** offset * growthTilt * ageTilt * chainTilt));
+    const tvlNow = Math.max(p.tvl_usd ?? 1, 1);
+    const implied = Math.max(1, Math.round(clamp(base, tvlNow * multLow, tvlNow * multHigh)));
     return {
       p,
       age,
       implied,
-      low: Math.max(1, Math.round(implied * 10 ** (fit.low * 0.6))),
-      high: Math.max(1, Math.round(implied * 10 ** (fit.high * 0.6))),
-      offset,
+      low: Math.max(1, Math.round(implied * 10 ** fit.low)),
+      high: Math.max(1, Math.round(implied * 10 ** fit.high)),
       base,
-      tilts: { growth: growthTilt, age: ageTilt, chain: chainTilt },
       signal: signalBySlug.get(p.slug) ?? 50,
     };
   });
@@ -495,9 +641,20 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
     const opportunity = (capital * 0.04 * hold) / 365;
     const cost = Math.round((gas + opportunity) * 100) / 100;
     const burden = capital > 0 ? cost / capital : 1;
-    // The verdict is about whether to spend, not about what the protocol is worth: gas that eats
-    // the position closes the plan whatever the implied value says.
-    const verdict = burden > 0.1 ? 'pass' : burden > 0.05 && r.signal < 60 ? 'thin' : r.signal >= 55 ? 'farm' : 'watch';
+    // What the plan is worth, not just what it costs: 0.001% of the implied launch, weighted
+    // by the share of protocols this age that already hold a token, against everything it costs.
+    const odds = oddsOf(r.age);
+    const work = WORK_HOURS;
+    // What one qualifying wallet is handed if the launch gives it 0.001% of its value, weighted by
+    // the share of protocols this age that already hold a token.
+    const airdrop = Math.round(r.implied * AIRDROP_SHARE * odds * 100) / 100;
+    const net = Math.round((airdrop - cost) * 100) / 100;
+    const perHour = Math.round((net / work) * 100) / 100;
+    // The launch value at which the plan breaks even: below it, the airdrop does not pay the gas.
+    const breakEven = odds > 0 ? Math.round(cost / (AIRDROP_SHARE * odds)) : null;
+    // The verdict is about whether to spend, not about what the protocol is worth: a plan that
+    // does not clear its own cost closes whatever the implied value says.
+    const verdict = net > 0 ? (r.signal >= 55 ? 'farm' : 'watch') : burden > 0.1 ? 'pass' : 'thin';
     const row: Row = {
       rank: i + 1,
       slug: r.p.slug,
@@ -522,12 +679,20 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
       cost_usd: cost,
       burden: Math.round(burden * 10000) / 10000,
       confidence: r.signal >= 55 && burden <= 0.04 ? 'high' : r.signal >= 40 ? 'medium' : 'low',
+      odds: Math.round(odds * 1000) / 1000,
+      work_hours: work,
+      airdrop_usd: airdrop,
+      net_usd: net,
+      per_hour_usd: perHour,
+      break_even_implied: breakEven,
       model: {
-        base_usd: Math.round(r.base),
-        category_offset: Math.round(r.offset * 1000) / 1000,
-        growth_tilt: Math.round(r.tilts.growth * 1000) / 1000,
-        age_tilt: Math.round(r.tilts.age * 1000) / 1000,
-        chain_tilt: Math.round(r.tilts.chain * 1000) / 1000,
+        intercept: Math.round(fit.intercept * 1000) / 1000,
+        exponent: Math.round(fit.tvl * 1000) / 1000,
+        tvl_usd: Math.round(tvl),
+        curve_usd: Math.round(r.base),
+        clamp_low_usd: Math.round(tvl * multLow),
+        clamp_high_usd: Math.round(tvl * multHigh),
+        clamped: r.base < tvl * multLow ? 'low' : r.base > tvl * multHigh ? 'high' : 'none',
       },
       farm_steps: [],
     };
@@ -552,7 +717,8 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
 
   const cols = [
     'rank', 'slug', 'name', 'category', 'chains', 'tvl', 'ch7', 'age', 'signal', 'implied', 'low', 'high',
-    'multiple', 'tier', 'verdict', 'capital', 'gas', 'hold', 'cost', 'burden', 'wl', 'steps', 'model',
+    'multiple', 'tier', 'verdict', 'capital', 'gas', 'hold', 'cost', 'burden', 'odds', 'airdrop', 'net',
+    'perh', 'breakeven', 'hours', 'wl', 'steps', 'model',
   ];
   const liveCols = ['slug', 'name', 'category', 'chains', 'tvl', 'mcap', 'ch7', 'multiple'];
 
@@ -561,7 +727,7 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
       as_of: snapshot.as_of,
       source: provenance(snapshot.source),
       floor_usd: snapshot.floor_usd,
-      model_version: 'radar-4',
+      model_version: 'radar-5',
       universe_size: universe.length,
       board_size: board.length,
       watchlist_size: snapshot.watchlist.length,
@@ -570,13 +736,21 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
       live_size: peers.length,
       excluded,
       fit,
+      multiple: { low: Math.round(multLow * 100) / 100, median: Math.round(median(mults) * 100) / 100, high: Math.round(multHigh * 100) / 100 },
+      odds: ['under 1y', '1-2y', '2-3y', '3-5y', '5y+', 'unknown']
+        .filter((b) => oddsTally.has(b))
+        .map((b) => {
+          const t = oddsTally.get(b)!;
+          return { bucket: b, all: t.all, token: t.token, share: Math.round(((t.token + 0.5) / (t.all + 1)) * 1000) / 1000 };
+        }),
       totals,
     },
     cols,
     rows: board.map((r) => [
       r.rank, r.slug, r.name, r.category, r.chains, r.tvl_usd, r.change_7d, r.age_days, r.launch_signal,
       r.implied_value_usd, r.implied_low_usd, r.implied_high_usd, r.multiple, r.tier, r.verdict,
-      r.capital_usd, r.gas_usd, r.hold_days, r.cost_usd, r.burden, r.in_watchlist, r.farm_steps, r.model,
+      r.capital_usd, r.gas_usd, r.hold_days, r.cost_usd, r.burden, r.odds, r.airdrop_usd, r.net_usd,
+      r.per_hour_usd, r.break_even_implied, r.work_hours, r.in_watchlist, r.farm_steps, r.model,
     ]),
     liveCols,
     live: live.map((p) => [

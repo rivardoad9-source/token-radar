@@ -48,19 +48,31 @@ const age = (d) => (d === null || d === undefined ? 'unknown' : d < 60 ? `${d}d`
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const pctOf = (v) => `${(v * 100).toFixed(1)}%`;
 const sign = (v, d = 3) => (v >= 0 ? `+ ${v.toFixed(d)}` : `− ${Math.abs(v).toFixed(d)}`);
+const cohort = (d) => (d === null || d === undefined ? 'unknown' : d < 365 ? 'under 1y' : d < 730 ? '1-2y' : d < 1095 ? '2-3y' : d < 1825 ? '3-5y' : '5y+');
+const signed = (n) => `${n < 0 ? '−' : '+'}$${Math.abs(n).toFixed(2)}`;
 
 /* ---------- the model's equation, above the board ---------- */
 
 function drawRule() {
-  const band = (b) => `×${(10 ** (b * 0.6)).toFixed(2)}`;
+  const band = (b) => `×${(10 ** b).toFixed(2)}`;
   el('rule').innerHTML =
     `<span class="k">model ${esc(H.model_version)}</span>` +
-    `<b>log10(FDV) = ${FIT.intercept.toFixed(3)} ${sign(FIT.tvl)}·log10(TVL) ${sign(FIT.age)}·log10(age) ${sign(FIT.chains)}·log10(chains) ${sign(FIT.growth)}·growth</b>` +
+    `<b>implied FDV = 10^(${FIT.intercept.toFixed(3)} + ${FIT.tvl.toFixed(3)} × log10 TVL)</b>` +
     `<span class="sep">|</span><span class="k">fitted on</span><span class="v">${FIT.n} protocols that already trade</span>` +
-    `<span class="sep">|</span><span class="k">R²</span><span class="v">${FIT.r2.toFixed(3)}</span>` +
-    `<span class="sep">|</span><span class="k">median miss</span><span class="v">${Math.round(FIT.mdape * 100)}%</span>` +
+    `<span class="sep">|</span><span class="k">blind miss</span><span class="v">${Math.round(FIT.mdape * 100)}% vs ${Math.round(FIT.flat * 100)}% for a flat price</span>` +
     `<span class="sep">|</span><span class="k">band</span><span class="v">${band(FIT.low)} to ${band(FIT.high)}</span>` +
-    `<span class="sep">|</span><span class="k">applied</span><span class="v">+ category offset, tilts at half strength</span>`;
+    `<span class="sep">|</span><span class="k">dropped</span><span class="v">age, growth, chains, category offsets: each one lost its blind test</span>`;
+}
+
+/** What the page claims about itself, printed from the data it just rendered. */
+function drawProof() {
+  const claimed = H.board_size;
+  const shown = rows.length;
+  const ok = claimed === shown;
+  el('proofline').innerHTML =
+    `<span class="${ok ? '' : 'bad'}">page renders <b>${shown}</b> of <b>${claimed}</b> rows from board.json</span>` +
+    `<span class="sep">/</span>every row above is one record of the sealed snapshot, nothing added` +
+    `<span class="sep">/</span>${H.live_size} protocols with a token are kept on the other tab, never scored`;
 }
 
 /* ---------- the band's axis: every row's range on one log scale ---------- */
@@ -93,24 +105,59 @@ function drawFacts() {
 }
 
 function drawModel() {
-  const s = sign;
   el('eq').innerHTML =
-    `log10(FDV) = <b>${FIT.intercept.toFixed(3)}</b> ${s(FIT.tvl)}·log10(TVL) ${s(FIT.age)}·log10(age) ${s(FIT.chains)}·log10(chains) ${s(FIT.growth)}·growth<br />` +
-    `<span style="color:var(--dim)">+ category offset · × growth, age and chain tilts at half strength</span>`;
+    `implied FDV = 10^(<b>${FIT.intercept.toFixed(3)}</b> + <b>${FIT.tvl.toFixed(3)}</b> × log10 TVL)` +
+    `<br /><span style="color:var(--dim)">one line, one exponent, no offsets and no tilts: every term that did not survive a blind test was taken out</span>`;
 
   const mult = (b) => `×${(10 ** b).toFixed(2)}`;
   const factors = [
-    ['TVL', `A tenfold TVL multiplies the value by <b>${(10 ** FIT.tvl).toFixed(2)}</b>: value grows with TVL but slower than it, so the biggest protocols by TVL carry the smallest multiples.`],
-    ['Age', `A tenfold older protocol is priced <b>${(10 ** FIT.age).toFixed(2)}</b> of the younger one: in the snapshot's own trading set, the market pays less per TVL dollar for the protocols that have run longest.`],
-    ['Chains', `A tenfold wider footprint is worth <b>${(10 ** FIT.chains).toFixed(2)}</b>: multi-chain protocols trade at thinner multiples than single-chain ones of the same TVL.`],
-    ['7d growth', `Every <b>+100%</b> of weekly TVL growth adds <b>${(FIT.growth * 100).toFixed(1)}%</b> to the value. Measured, small, and held at half weight because one snapshot is one draw.`],
-    ['Category', `Each category's median miss is added back as an offset, shrunk by its peer count and capped at ±0.45 in log. Lending, Dexs and RWA are not valued like a bridge.`],
-    ['Band', `The 25th and 75th percentile miss are <b>${mult(FIT.low * 0.6)}</b> and <b>${mult(FIT.high * 0.6)}</b>: that is the whisker under every implied value, and it is why the page prints a band, not a promise.`],
+    ['The curve', `Ten times the TVL raises the implied value <b>${(10 ** FIT.tvl).toFixed(2)}×</b>, not 10×: the market pays less per TVL dollar as a protocol grows. That is the whole model, and it is the only shape that held up.`],
+    ['The guard', `A shallow line will happily value a $5M protocol at $400M. Every row is held inside the multiples the ${FIT.n} trading protocols actually carry: <b>${H.multiple.low}×</b> to <b>${H.multiple.high}×</b> TVL, median <b>${H.multiple.median}×</b>.`],
+    ['The band', `The 10th and 90th percentile blind miss are <b>${mult(FIT.low)}</b> and <b>${mult(FIT.high)}</b>, covering <b>${Math.round(FIT.coverage * 100)}%</b> of the errors the model made on protocols it had not seen. The row prints that band, not a promise.`],
+    ['What lost', `The age term, seven-day growth, chain count and a category offset were all fitted and all scored worse out of sample. The age term also collapsed on a strictly time-ordered split, so it is gone rather than shrunk.`],
+    ['What it pays', `A farm is credited with <b>0.001%</b> of the implied launch, weighted by the odds a token exists at that age, against gas and the yield given up: the net column, and the hour it buys.`],
+    ['The odds', `Age buckets are counted in the snapshot itself: of every token-able protocol aged two to three years, <b>${Math.round((H.odds.find((o) => o.bucket === '2-3y')?.share ?? 0) * 100)}%</b> already hold a token. Cross-sectional, not a forecast for one protocol.`],
   ];
   el('factors').innerHTML = factors.map(([k, v]) => `<li><span class="k">${k}</span><span class="v">${v}</span></li>`).join('');
+
+  const worst = Math.max(...FIT.candidates.map((c) => c.miss), FIT.flat);
+  el('tests').innerHTML =
+    `<h4>Tested by refitting without the protocol it prices</h4><table>` +
+    `<tr><th>Shape</th><th>median miss</th></tr>` +
+    FIT.candidates
+      .map((c, i) => {
+        const cls = i === 0 ? 'win' : c.miss > FIT.candidates[0].miss ? 'lose' : '';
+        return `<tr><td>${esc(c.name)}</td><td class="${cls}">${Math.round(c.miss * 100)}%</td></tr>`;
+      })
+      .join('') +
+    `<tr><td>flat: everything at the peer median</td><td>${Math.round(FIT.flat * 100)}%</td></tr>` +
+    `<tr><td>200 random 70/30 splits</td><td>${Math.round(FIT.random.miss * 100)}% vs ${Math.round(FIT.random.flat * 100)}% flat</td></tr>` +
+    `<tr><td>older 60% / newer 40% split (${FIT.ts.n} held out)</td><td class="lose">${Math.round(FIT.ts.miss * 100)}% vs ${Math.round(FIT.ts.flat * 100)}% flat</td></tr>` +
+    `</table>`;
+
   el('caveat').textContent =
-    `Fitted on the ${FIT.n} protocols in this snapshot whose record already carries a token, a TVL and a listing date, and scored by refitting without each one: median ${Math.round(FIT.mdape * 100)}% error, R² ${FIT.r2.toFixed(3)}. ` +
-    `The level is therefore a band, not a quote; what carries is the ordering and the band's width. No time series exists in one snapshot, so nothing here forecasts a launch date. Source: ${H.source}.`;
+    `Fitted on the ${FIT.n} protocols in this snapshot whose record already carries a token, a TVL and a listing date. Blind error ${Math.round(FIT.mdape * 100)}%, inside a factor of three on ${Math.round(FIT.within3 * 100)}% of them against ${Math.round(FIT.flat_within3 * 100)}% for the flat median; R² ${FIT.r2.toFixed(3)}. ` +
+    `The time-ordered split is the model's worst result and it is printed anyway: on the protocols that launched after the ones it learned from, the line loses to the flat median. That is why every number carries a band, why the board is a ranking, and why nothing here forecasts a launch date. Source: ${H.source}.`;
+}
+
+/** The wait curve: what share of protocols at each age has already launched a token. */
+function drawOdds() {
+  const max = Math.max(...H.odds.map((o) => o.share), 0.01);
+  const ladder = H.odds
+    .filter((o) => o.bucket !== 'unknown')
+    .map(
+      (o) =>
+        `<div class="odds-row"><span class="lab">${esc(o.bucket)}</span>` +
+        `<span class="track"><i style="width:${((o.share / max) * 100).toFixed(1)}%"></i></span>` +
+        `<span class="val">${Math.round(o.share * 100)}% <span>of ${o.all}</span></span></div>`,
+    )
+    .join('');
+  const young = H.odds.find((o) => o.bucket === 'under 1y');
+  const old = H.odds.find((o) => o.bucket === '3-5y');
+  el('odds').innerHTML =
+    `<div class="odds-ladder">${ladder}</div>` +
+    `<p class="odds-note">A protocol under a year old has launched a token in <b>${Math.round((young?.share ?? 0) * 100)}%</b> of the snapshot's own cases; between three and five years, in <b>${Math.round((old?.share ?? 0) * 100)}%</b>. ` +
+    `The board uses this as the odds term in every net figure, so a farm on a young protocol is credited with less than the same farm on an old one. These are counts of a single day's snapshot, not a survival curve: no history of launches exists here, and the page does not pretend otherwise.</p>`;
 }
 
 function drawPlanStrip() {
@@ -119,11 +166,12 @@ function drawPlanStrip() {
   const farm = rows.filter((r) => r.verdict === 'farm');
   const capital = farm.reduce((s, r) => s + r.capital, 0);
   const cost = farm.reduce((s, r) => s + r.cost, 0);
+  const net = farm.reduce((s, r) => s + r.net, 0);
   el('planStrip').innerHTML =
-    cell('farm', H.totals.farm, 'Farm now', `Signal 55+ and gas under 5% of the position: $${capital.toLocaleString('en-US')} of capital across all of them, $${Math.round(cost)} of cost.`) +
-    cell('watch', H.totals.watch, 'Watch', 'Worth a position once the protocol moves: right size, signal not there yet.') +
-    cell('thin', H.totals.thin, 'Thin', 'The position is fine, the gas is not: these are chains to farm with more capital or not at all.') +
-    cell('pass', H.totals.pass, 'Pass', 'Cost above 10% of the capital it needs: the plan cannot pay for itself on this chain.');
+    cell('farm', H.totals.farm, 'Farm now', `Signal 55+ and the plan clears its own cost: $${Math.round(net).toLocaleString('en-US')} credited back against $${Math.round(cost)} of gas and yield given up, on $${capital.toLocaleString('en-US')} of capital.`) +
+    cell('watch', H.totals.watch, 'Watch', 'Pays for itself and the signal is not there yet: the position is right, the timing is not.') +
+    cell('thin', H.totals.thin, 'Thin', 'The cost is a small share of the position, but the credited airdrop does not cover it.') +
+    cell('pass', H.totals.pass, 'Pass', 'Gas above 10% of the capital it needs: the plan cannot pay for itself on this chain.');
 }
 
 /* ---------- drawing the board ---------- */
@@ -198,6 +246,8 @@ function drawBoard() {
       <td class="num">${age(r.age)}</td>
       <td>${signalCell(r.signal)}</td>
       <td class="num"><span class="imp">${usd(r.implied)}</span><span class="mult">${r.multiple.toFixed(2)}× TVL</span>${bandHtml(r)}</td>
+      <td class="num odds-cell">${Math.round(r.odds * 100)}%<span>${cohort(r.age)}</span></td>
+      <td class="num"><span class="netcell ${r.net < 0 ? 'neg' : ''}">${signed(r.net)}</span><span class="subline">$${r.perh.toFixed(2)}/h</span></td>
       <td class="num"><span class="verdict ${r.verdict}">${r.verdict === 'farm' ? 'farm now' : r.verdict}</span><span class="pcost">$${r.cost.toFixed(2)} · ${pctOf(r.burden)}</span></td>
     </tr>`,
     )
@@ -252,28 +302,29 @@ function open(slug) {
     <p class="big"><strong>${usd(r.implied)}</strong><em>implied FDV if it issued a token · ${r.multiple.toFixed(2)}× its ${usd(r.tvl)} of TVL</em></p>
     <div class="band2"><i style="left:${at(r.low).toFixed(1)}%;width:${Math.max(at(r.high) - at(r.low), 1).toFixed(1)}%"></i><u style="left:${at(r.implied).toFixed(1)}%"></u></div>
     <div class="bandlabels"><span>${usd(r.low)} low</span><span>${usd(r.high)} high</span></div>
-    <p class="scale">Its implied value is ${r.multiple.toFixed(2)}× its own TVL, and the band the model has earned on the protocols it could check runs ${(r.low / r.tvl).toFixed(2)}× to ${(r.high / r.tvl).toFixed(2)}×: read the ranking, and read the multiple inside that band.</p>
+    <p class="scale">Its implied value is ${r.multiple.toFixed(2)}× its own TVL, and the band the model has earned on the protocols it could check runs ${(r.low / r.tvl).toFixed(3)}× to ${(r.high / r.tvl).toFixed(2)}×: read the ranking, and read the multiple inside that band.</p>
 
     <h3 class="sec">Where the number comes from</h3>
     <dl class="kv">
       <dt>TVL, the record</dt><dd>${usdFull(r.tvl)}</dd>
-      <dt>Fitted at that TVL</dt><dd class="hl">${usdFull(r.model.base_usd)}</dd>
-      <dt>Category offset</dt><dd>×${(10 ** r.model.category_offset).toFixed(3)}</dd>
-      <dt>7d growth (${r.ch7 === null ? 'not reported' : pct(r.ch7)})</dt><dd>×${r.model.growth_tilt.toFixed(3)}</dd>
-      <dt>Age (${r.age === null ? 'unknown' : `${r.age} days`})</dt><dd>×${r.model.age_tilt.toFixed(3)}</dd>
-      <dt>Chains (${(r.chains || []).length})</dt><dd>×${r.model.chain_tilt.toFixed(3)}</dd>
-      <dt>Implied FDV</dt><dd class="v">${usdFull(r.implied)}</dd>
+      <dt>log10 of it</dt><dd>${Math.log10(Math.max(r.tvl, 1)).toFixed(3)}</dd>
+      <dt>Blind curve: 10^(${r.model.intercept.toFixed(3)} + ${r.model.exponent.toFixed(3)} × log10 TVL)</dt><dd>${usdFull(r.model.curve_usd)}</dd>
+      <dt>Peers' multiple range, applied to this TVL</dt><dd>${usd(r.model.clamp_low_usd)} – ${usd(r.model.clamp_high_usd)}</dd>
+      <dt>${r.model.clamped === 'none' ? 'Inside the range: the curve stands' : `Held at the ${r.model.clamped === 'low' ? 'floor' : 'ceiling'} of that range`}</dt><dd class="hl">${usdFull(r.implied)}</dd>
+      <dt>Band (P10-P90 blind miss)</dt><dd>${usd(r.low)} – ${usd(r.high)}</dd>
     </dl>
 
-    <h3 class="sec">What the plan costs <span class="chain">on ${esc(chain)}</span></h3>
+    <h3 class="sec">What it pays <span class="chain">not what it costs</span></h3>
     <dl class="kv">
-      <dt>Capital the position needs</dt><dd>${usdFull(r.capital)}</dd>
-      <dt>Gas, ${4 + Math.round(r.hold / 7)} transactions</dt><dd>${`$${r.gas.toFixed(2)}`}</dd>
+      <dt>Odds a token exists at ${cohort(r.age)}</dt><dd>${Math.round(r.odds * 100)}%</dd>
+      <dt>Credited airdrop, 0.001% of the implied launch</dt><dd>$${r.airdrop.toFixed(2)}</dd>
+      <dt>Gas, ${4 + Math.round(r.hold / 7)} transactions on ${esc(chain)}</dt><dd>$${r.gas.toFixed(2)}</dd>
       <dt>Yield given up over ${r.hold} days</dt><dd>$${(r.cost - r.gas).toFixed(2)}</dd>
-      <dt>Total cost</dt><dd>${`$${r.cost.toFixed(2)}`}</dd>
-      <dt>As a share of the position</dt><dd>${pctOf(r.burden)}</dd>
+      <dt>Net, over ${r.hours} hours of work</dt><dd class="${r.net >= 0 ? 'v' : 'hl'}">${signed(r.net)} · $${r.perh.toFixed(2)}/h</dd>
+      <dt>Breaks even at an implied launch of</dt><dd>${r.breakeven === null ? 'never' : usdFull(r.breakeven)}</dd>
       <dt>Verdict</dt><dd class="${r.verdict === 'farm' ? 'v' : 'hl'}">${r.verdict === 'farm' ? 'farm now' : r.verdict}</dd>
     </dl>
+    <p class="scale">The plan needs ${usdFull(r.capital)} of capital and costs ${usdFull(r.cost)}, which is ${pctOf(r.burden)} of the position. It is credited 0.001% of the implied launch, weighted by the ${Math.round(r.odds * 100)}% odds this age cohort has launched a token: ${signed(r.net)} net, or $${r.perh.toFixed(2)} an hour across ${r.hours} hours.</p>
 
     <h3 class="sec">How to farm it</h3>
     <ol class="steps">${r.steps.map((s) => `<li><p>${esc(s)}</p></li>`).join('')}</ol>
@@ -343,7 +394,9 @@ window.RADAR_UI = {
 
 drawFacts();
 drawRule();
+drawProof();
 drawModel();
+drawOdds();
 drawPlanStrip();
 drawControls();
 drawBoard();

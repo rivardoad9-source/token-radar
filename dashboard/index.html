@@ -13,7 +13,7 @@
       <span class="scope" aria-hidden="true"><i></i></span>
       <div>
         <h1>Token Radar</h1>
-        <p class="thesis">The snapshot holds two kinds of protocol: the ones the market already prices, and the ones with no token yet. Each of the second group is valued by fitting the first: TVL, age, chains and seven-day growth, against what the market actually pays. The model never scores a protocol that already trades.</p>
+        <p class="thesis">The snapshot holds two kinds of protocol: the ones the market already prices, and the ones with no token yet. The first group is the textbook, not the subject: one line is fitted through what the market pays per dollar of TVL, and every protocol in the second group is priced on it. The model never scores a protocol that already trades, and every number it prints is tested on protocols it was not fitted on.</p>
       </div>
     </div>
     <dl class="facts" id="facts"></dl>
@@ -27,6 +27,7 @@
   </nav>
 
   <p class="rule" id="rule"></p>
+  <p class="proofline" id="proofline"></p>
 
   <div id="radarView">
     <section class="controls" aria-label="Filters">
@@ -72,6 +73,8 @@
           <th class="num">Age</th>
           <th>Signal</th>
           <th class="num">Implied FDV <span class="thnote">band</span></th>
+          <th class="num">Token odds <span class="thnote">cohort</span></th>
+          <th class="num">Net · per hour</th>
           <th class="num">Plan</th>
         </tr></thead>
         <tbody></tbody>
@@ -95,12 +98,17 @@
       <div class="model-body">
         <p class="eq" id="eq"></p>
         <ul class="factors" id="factors"></ul>
+        <div class="tests" id="tests"></div>
         <p class="caveat" id="caveat"></p>
       </div>
     </div>
     <div class="panel">
-      <h2>The plans, priced <span class="hint">what it costs to farm, and where gas eats the position</span></h2>
+      <h2>The plans, priced <span class="hint">what it costs to farm, what it pays back, and where gas eats the position</span></h2>
       <div class="plan-strip" id="planStrip"></div>
+    </div>
+    <div class="panel wide">
+      <h2>When, not just how much <span class="hint">the share of protocols at each age that already hold a token, counted in this snapshot</span></h2>
+      <div class="odds-body" id="odds"></div>
     </div>
   </section>
 </main>

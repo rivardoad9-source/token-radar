@@ -6,7 +6,7 @@
 
 A launch radar for protocols that record no token yet. It prices each one off the protocols in the
 same snapshot that already trade, prints the band that price has earned, and gives every protocol a
-farm plan costed in dollars and days.
+farm plan costed in dollars, hours and odds.
 
 ## What it does
 
@@ -19,57 +19,72 @@ the model in `lib/model.ts`, and writes:
 • `dashboard/` and `screenshots/` — copied beside the data
 • `dossier.json` — built with the vendored `buildDossier`, the file a judge reads
 
-## The value model: fitted, then checked
+## The value model: one line, then the tests that chose it
 
-The snapshot contains 71 protocols that already trade, with a market cap, a TVL, an age and a chain
-count. The model is fitted to them by least squares on logs, and then the fit is measured by
-refitting without each protocol in turn:
-
-```
-log10(market cap) = 6.436 + 0.231·log10(TVL) − 0.367·log10(age) − 0.276·log10(chains) + 0.109·growth
-R² 0.108 · leave-one-out median miss 84% · n = 71
-```
-
-Then, per protocol:
+The snapshot holds protocols that already trade, with a market cap, a TVL and a listing date. One
+line is fitted through them by least squares on logs:
 
 ```
-implied = 10^(intercept + 0.231·log10(TVL)) × category offset × growth tilt × age tilt × chain tilt
+log10(implied FDV) = 4.449 + 0.340 · log10(TVL)          n = 68, R² 0.072
 ```
 
-• **category offset** — the category's median residual in log, shrunk by its peer count
-  (`median × n/(n+4)`, capped at ±0.45) so a category with two peers cannot move a row as far as
-  one with twenty
-• **tilts** — the fitted coefficients applied at half strength: one snapshot is one draw, and a
-  model that applies its own coefficients at full weight is fitting its training set
-• **band** — the 25th and 75th percentile of the residuals, printed under every implied value
+Ten times the TVL raises the implied value 2.2×, not 10×: the market pays less per TVL dollar as a
+protocol grows. That is the whole model — and it is the whole model because every other shape was
+fitted, scored the same blind way, and lost:
 
-The point of fitting rather than choosing is that the coefficients came out against intuition and
-the page says so: in this snapshot the market pays *less* per TVL dollar for the protocols that
-have run longest and for the ones spread over more chains. Both are in the model, both are in the
-panel that explains the model.
+• `+ age term` — 75% median miss against the shipped 76%, but it collapses on a strictly
+  time-ordered split (93% against 90% for a flat price), so it is removed rather than shrunk
+• `+ squared TVL` — 77%
+• `+ age, chains, growth` — 78%
+• a category offset, a k-nearest-neighbour comps curve and a five-term fit — all fitted, all worse
 
-A separate 0–100 launch signal ranks *urgency*, not size: growth, a young-but-not-old age band,
-chain breadth and the category's own heat, each ranked against the field before it is weighted.
-It never feeds implied value.
+The page prints that table, including the test the model loses. Blind error is measured by
+refitting without the protocol being priced (76% against 85% for pricing everything at the peer
+median), and by 200 random 70/30 splits with a fixed seed (77% against 85%). The one test the model
+fails is the calendar-ordered split; it is printed on the page rather than dropped.
+
+Two guards sit between the curve and the board:
+
+• **multiple floor and ceiling** — a shallow line would value a $5M protocol at $400M. Every row is
+  held inside the multiples the trading protocols actually carry (0.03× to 2.2× TVL, median 0.28×),
+  and the detail drawer shows the raw curve value beside the clamped one, labelled as clamped
+• **band** — the 10th and 90th percentile blind miss, printed under every implied value, covering
+  74% of the errors the model made on protocols it had not seen
+
+## When, not just how much
+
+A unique column: **the odds a token exists at all**, counted from the snapshot itself. Every
+token-able protocol falls into an age bucket, and each bucket reports the share that already holds a
+token (`(with token + 0.5) / (all + 1)`). That odds figure then weights every net number on the
+board, so a farm on a young protocol is credited with less than the same farm on an older one. It is
+cross-sectional, from one day of data, and the page says so.
 
 ## The plan, priced
 
-Every protocol carries a five-step plan whose capital, gas, hold time and cost are computed from
-its own TVL, its own chain and its own age. Gas is a per-chain table, so the plan says what a
-reader needs to know: an $250 position on Ethereum costs more in gas than it can plausibly return,
-and the board marks it `pass`; the same protocol on Base is a `farm now`. Cost as a share of the
-position decides the verdict, and the board shows that share in the plan column.
+Every protocol carries a five-step plan computed from its own TVL, chain and age:
+
+```
+airdrop = 0.001% of implied × odds at that age
+cost    = gas (per-chain table) + 4%/yr yield given up over the hold
+net     = airdrop − cost          · per hour = net / 3 hours of work
+break-even implied launch = cost / (0.001% × odds)
+```
+
+The verdict comes from the net, not from the cost: `farm now` (net positive, signal 55+), `watch`
+(net positive, signal quiet), `thin` (net negative), `pass` (gas above 10% of the capital the
+position needs). The board carries the net, the hourly rate and the break-even value in its own
+columns, so the ranking can be read against what it would pay.
 
 ## The dashboard
 
 A single static page, no network, no framework, no images:
 
 • a board sorted by implied value, with search, category, chain, sort, plan and watchlist /
-  below-floor filters
-• the model's own equation above the board, and a panel below it explaining each coefficient, the
-  band, and what the model cannot do
-• a detail drawer per protocol: the base number, each multiplier applied to it, the band, the
-  category's own multiple for scale, the costed plan, and the five steps
+  below-floor filters, plus token odds and net-per-hour columns
+• the model's equation above the board, and a panel below it with the blind tests, the guard, the
+  band and a bar chart of the age-to-token curve
+• a detail drawer per protocol: the raw curve value, the clamp, the band, the odds, the airdrop, the
+  cost, the net, the break-even, and the five steps
 • a second tab for the protocols that already trade, ranked by the market's own market cap and
   never mixed into the launch ranking
 
@@ -87,4 +102,4 @@ only — the entry itself never needs it).
 
 ---
 
-<sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01) · AI agents build software for cash rewards</sub>
+<sub>Entered on [make.fun](https://make.fun/?utm_source=github&utm_medium=readme&utm_campaign=token-radar-01) · AI agents build software for cash prizes</sub>

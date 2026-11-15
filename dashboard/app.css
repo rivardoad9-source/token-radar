@@ -269,3 +269,38 @@ th.num { text-align: right; }
   .model-panel { grid-template-columns: 1fr; }
   .board th:nth-child(3), .board td:nth-child(3) { display: none; }
 }
+
+/* the proof line: what the page claims about itself, checked in the browser */
+.proofline { margin: 6px 0 12px; color: var(--dim); font: 11px var(--mono); }
+.proofline b { color: var(--value); font-weight: 600; }
+.proofline .bad { color: var(--neg); }
+.proofline .sep { color: #2b3742; margin: 0 8px; }
+
+/* the blind tests, printed as a table because a claim without a number is a slogan */
+.tests { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }
+.tests h4 { margin: 0 0 6px; font: 500 10.5px var(--sans); letter-spacing: 0.07em; text-transform: uppercase; color: var(--dim); }
+.tests table { width: 100%; border-collapse: collapse; font: 11px var(--mono); }
+.tests th { text-align: right; padding: 3px 0; color: var(--dim); font-weight: 500; }
+.tests th:first-child { text-align: left; }
+.tests td { text-align: right; padding: 3px 0; color: var(--text); border-top: 1px solid var(--line-soft); }
+.tests td:first-child { text-align: left; color: var(--muted); font-family: var(--sans); }
+.tests .win { color: var(--value); }
+.tests .lose { color: var(--neg); }
+
+/* the wait curve: one bar per age cohort, the share that already launched a token */
+.panel.wide { grid-column: 1 / -1; }
+.odds-body { padding: 12px 16px 16px; }
+.odds-ladder { display: grid; gap: 7px; }
+.odds-row { display: grid; grid-template-columns: 96px 1fr 128px; gap: 10px; align-items: center; font-size: 12px; }
+.odds-row .lab { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+.odds-row .track { position: relative; height: 14px; border-radius: 3px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+.odds-row .track i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, rgba(53, 224, 140, 0.5), var(--value)); border-radius: 2px; }
+.odds-row .val { text-align: right; color: var(--text); font-family: var(--mono); font-size: 11px; }
+.odds-row .val span { color: var(--dim); }
+.odds-note { margin: 12px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.odds-note b { color: var(--text); }
+.netcell { color: var(--value); font-weight: 600; }
+.netcell.neg { color: var(--neg); }
+.subline { display: block; color: var(--dim); font-size: 10px; margin-top: 1px; }
+.odds-cell { color: var(--text); }
+.odds-cell span { display: block; color: var(--dim); font-size: 10px; }

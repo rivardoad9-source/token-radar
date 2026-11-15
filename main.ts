@@ -86,6 +86,7 @@ const watchlistRows = board.filter((r) => r.in_watchlist).length;
 const fit = radar.head.fit;
 process.stdout.write(
   `token radar: ${snapshot.protocols.length} protocols, ${snapshot.watchlist.length} on the watchlist (${watchlistRows} ranked), ${board.length} rows scored (${radar.early_size} below the floor, ${radar.head.excluded} set aside)\n` +
-    `token radar: model ${radar.head.model_version}, fitted on ${fit.n} trading protocols: log10(mcap) = ${fit.intercept.toFixed(3)} + ${fit.tvl.toFixed(3)}·log10(TVL) ${fit.age.toFixed(3)}·log10(age) ${fit.chains.toFixed(3)}·log10(chains) + ${fit.growth.toFixed(3)}·growth, R² ${fit.r2.toFixed(3)}, leave-one-out error ${(fit.mdape * 100).toFixed(0)}%\n` +
+    `token radar: model ${radar.head.model_version}, fitted on ${fit.n} trading protocols: implied = 10^(${fit.intercept.toFixed(3)} + ${fit.tvl.toFixed(3)} x log10 TVL), R² ${fit.r2.toFixed(3)}\n` +
+    `token radar: blind tests: leave-one-out ${(fit.mdape * 100).toFixed(0)}% vs ${(fit.flat * 100).toFixed(0)}% flat, within 3x ${(fit.within3 * 100).toFixed(0)}% vs ${(fit.flat_within3 * 100).toFixed(0)}%; 200 random 70/30 splits ${(fit.random.miss * 100).toFixed(0)}% vs ${(fit.random.flat * 100).toFixed(0)}%; older-60/newer-40 split ${(fit.ts.miss * 100).toFixed(0)}% vs ${(fit.ts.flat * 100).toFixed(0)}% on ${fit.ts.n} held-out\n` +
     `token radar: wrote board.json, data.js, dashboard (${pages.length} files), screenshots (${shots.length} images) and dossier.json to ${out}\n`,
 );

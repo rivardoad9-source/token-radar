@@ -79,8 +79,19 @@ h1 { margin: 0; font-size: 21px; letter-spacing: -0.01em; font-weight: 650; }
 
 input[type="search"], select {
   appearance: none; width: 100%; padding: 8px 10px; color: var(--text);
-  background: var(--surface-2) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%238597a9' stroke-width='1.5'/></svg>") no-repeat right 10px center;
+  background-color: var(--surface-2);
   border: 1px solid var(--line); border-radius: var(--r-control); font: 14px var(--sans);
+}
+
+/* The dropdown arrow, drawn from two gradients: the page names no address, not even a namespace. */
+select {
+  padding-right: 26px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 14px) calc(50% - 2px), calc(100% - 9px) calc(50% - 2px);
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
 }
 input[type="search"] { background-image: none; }
 input[type="search"]::placeholder { color: var(--dim); }

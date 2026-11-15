@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Token Radar: pre-token protocols ranked by implied value</title>
+<link rel="stylesheet" href="app.css" />
+</head>
+<body>
+<header class="masthead">
+  <div class="wrap masthead-row">
+    <div class="brand">
+      <span class="sweep" aria-hidden="true"></span>
+      <div>
+        <h1>Token Radar</h1>
+        <p class="tagline">Protocols with no token yet, ranked by what the market already pays per TVL dollar in their category.</p>
+      </div>
+    </div>
+    <dl class="facts" id="facts"></dl>
+  </div>
+</header>
+
+<main class="wrap">
+  <nav class="tabs" id="tabs" aria-label="Board">
+    <button data-mode="radar" class="on">Launch radar <b id="tabRadar">-</b></button>
+    <button data-mode="trading">Already trading <b id="tabLive">-</b></button>
+  </nav>
+
+  <div id="radarView">
+    <section class="controls" aria-label="Filters">
+      <label class="field grow">
+        <span>Search</span>
+        <input id="q" type="search" placeholder="protocol, category, chain" autocomplete="off" />
+      </label>
+      <label class="field"><span>Category</span><select id="cat"></select></label>
+      <label class="field"><span>Chain</span><select id="chain"></select></label>
+      <label class="field"><span>Sort</span><select id="sort">
+        <option value="implied">Implied value</option>
+        <option value="signal">Launch signal</option>
+        <option value="tvl">TVL</option>
+        <option value="growth">7d growth</option>
+        <option value="age">Age</option>
+        <option value="multiple">Implied / TVL</option>
+      </select></label>
+      <div class="field"><span>Show</span>
+        <div class="seg" id="view" role="group" aria-label="Board view">
+          <button data-view="all" class="on">All</button>
+          <button data-view="watchlist">Watchlist</button>
+          <button data-view="early">Below floor</button>
+        </div>
+      </div>
+    </section>
+
+    <p class="count" id="count"></p>
+
+    <section class="panel">
+      <table class="board" id="board">
+        <thead><tr>
+          <th class="num">#</th><th>Protocol</th><th>Category</th><th>Chains</th>
+          <th class="num">TVL</th><th class="num">7d</th><th class="num">Age</th>
+          <th class="sig">Signal</th><th class="num">Implied FDV</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+      <p class="empty" id="empty" hidden>Nothing matches those filters. Clear the search or widen the category.</p>
+    </section>
+  </div>
+
+  <section class="panel live-panel" id="liveView" hidden>
+    <h2>Already trading <span class="hint">the snapshot records a token for these: market cap is the market's number, never the model's</span></h2>
+    <p class="livenote" id="livenote"></p>
+    <table class="board compact" id="live">
+      <thead><tr><th>Protocol</th><th>Category</th><th>Chains</th><th class="num">TVL</th><th class="num">Market cap</th><th class="num">MCap / TVL</th><th class="num">7d</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section class="panel model-panel" id="modelPanel">
+    <h2>How implied value is built</h2>
+    <p class="formula">
+      implied = TVL × <b>comparable FDV/TVL</b> × <b>growth</b> × <b>maturity</b> × <b>chain spread</b>
+    </p>
+    <div class="model-grid" id="modelGrid"></div>
+    <p class="note" id="modelNote"></p>
+  </section>
+</main>
+
+<aside class="drawer" id="drawer" aria-hidden="true">
+  <button class="close" id="close" aria-label="Close">×</button>
+  <div class="drawer-body" id="drawerBody"></div>
+</aside>
+
+<script src="../data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

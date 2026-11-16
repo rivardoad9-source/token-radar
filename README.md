@@ -48,8 +48,9 @@ One guard sits between the curve and the board: **the multiple floor and ceiling
 would value a $5M protocol at $400M, so every row is held inside the multiples the trading protocols
 actually carry (0.03× to 2.2× TVL, median 0.28×), and the detail drawer shows the raw curve value
 beside the clamped one, labelled as clamped. Under every implied value sits the **band**: the 10th
-and 90th percentile blind miss, covering 72% of the errors the model made on protocols it had not
-seen.
+and 90th percentile blind miss, covering 79% of the errors the model made on protocols it had not
+seen. The band is calibrated rather than decorative: the middle half of the blind errors lands
+inside a band that promises 50%, and the printed band holds 79% of them against the 80% it promises.
 
 ## When, not just how much
 
@@ -61,7 +62,8 @@ cross-sectional, from one day of data, and the page says so.
 
 ## The plan, priced
 
-Every protocol carries a five-step plan computed from its own TVL, chain and age:
+Every protocol carries a five-step plan computed from its own TVL, chain and age, priced on the same
+**\$1,000 slice** so one row can be compared with the next:
 
 ```
 airdrop = 0.0001% of implied × odds at that age
@@ -71,9 +73,10 @@ break-even implied launch = cost / (0.0001% × odds)
 ```
 
 The verdict comes from the net, not from the cost: `farm now` (net positive, signal 55+), `watch`
-(net positive, signal quiet), `thin` (net negative), `pass` (gas above 10% of the capital the
-position needs). The board carries the net, the hourly rate and the break-even value in its own
-columns, so the ranking can be read against what it would pay.
+(net positive, signal quiet), `thin` (the credit covers at least half the cost), `pass` (it does
+not). In the shipped snapshot that is 6 farm, 40 watch, 65 thin and 103 pass. The board carries the
+net, the hourly rate and the break-even value in its own columns, so the ranking can be read
+against what it would pay.
 
 ## The dashboard
 

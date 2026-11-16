@@ -64,10 +64,10 @@ cross-sectional, from one day of data, and the page says so.
 Every protocol carries a five-step plan computed from its own TVL, chain and age:
 
 ```
-airdrop = 0.001% of implied × odds at that age
+airdrop = 0.0001% of implied × odds at that age
 cost    = gas (per-chain table) + 4%/yr yield given up over the hold
 net     = airdrop − cost          · per hour = net / 3 hours of work
-break-even implied launch = cost / (0.001% × odds)
+break-even implied launch = cost / (0.0001% × odds)
 ```
 
 The verdict comes from the net, not from the cost: `farm now` (net positive, signal 55+), `watch`

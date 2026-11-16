@@ -134,7 +134,7 @@ function drawModel() {
     ['The guard', `A shallow line would value a $5M protocol at $400M. Every row is held inside the multiples the ${FIT.n} trading protocols actually carry: <b>${H.multiple.low}×</b> to <b>${H.multiple.high}×</b> TVL, median <b>${H.multiple.median}×</b>.`],
     ['The band', `The 10th and 90th percentile blind miss are <b>${mult(FIT.low)}</b> and <b>${mult(FIT.high)}</b>, covering <b>${Math.round(FIT.coverage * 100)}%</b> of the errors the model made on protocols it had not seen. The row prints that band, not a promise.`],
     ['What lost', `The chain count, a squared TVL term, a category offset and a k-nearest-neighbour comps curve were all fitted and all priced worse out of sample. The table below is the test that decided it.`],
-    ['What it pays', `A farm is credited with <b>0.001%</b> of the implied launch, weighted by the odds a token exists at that age, against gas and the yield given up: the net column, and the hour it buys.`],
+    ['What it pays', `A farm is credited with <b>0.0001%</b> of the implied launch, weighted by the odds a token exists at that age, against gas and the yield given up: the net column, and the hour it buys.`],
     ['The odds', `Age buckets are counted in the snapshot itself: of every token-able protocol aged two to three years, <b>${Math.round((H.odds.find((o) => o.bucket === '2-3y')?.share ?? 0) * 100)}%</b> already hold a token. Cross-sectional, not a forecast for one protocol.`],
   ];
   el('factors').innerHTML = factors.map(([k, v]) => `<li><span class="k">${k}</span><span class="v">${v}</span></li>`).join('');
@@ -152,6 +152,11 @@ function drawModel() {
     `<tr><td>flat: everything at the peer median</td><td>${Math.round(FIT.flat * 100)}%</td></tr>` +
     `<tr><td>200 random 70/30 splits</td><td>${Math.round(FIT.random.miss * 100)}% vs ${Math.round(FIT.random.flat * 100)}% flat</td></tr>` +
     `<tr><td>older 60% / newer 40% split (${FIT.ts.n} held out)</td><td class="lose">${Math.round(FIT.ts.miss * 100)}% vs ${Math.round(FIT.ts.flat * 100)}% flat</td></tr>` +
+    `</table>` +
+    `<h4>Does the band hold what it promises</h4><table>` +
+    `<tr><th>Band</th><th>errors inside</th><th>promised</th></tr>` +
+    `<tr><td>×${(10 ** FIT.mid_low).toFixed(2)} to ×${(10 ** FIT.mid_high).toFixed(2)} (middle half)</td><td class="win">${Math.round(FIT.coverage_mid * 100)}%</td><td>50%</td></tr>` +
+    `<tr><td>×${(10 ** FIT.low).toFixed(2)} to ×${(10 ** FIT.high).toFixed(2)} (the printed band)</td><td class="win">${Math.round(FIT.coverage * 100)}%</td><td>80%</td></tr>` +
     `</table>`;
 
   el('caveat').textContent =
@@ -244,8 +249,17 @@ function drawPlanStrip() {
   el('planStrip').innerHTML =
     cell('farm', H.totals.farm, 'Farm now', `Signal 55+ and the plan clears its own cost: $${Math.round(net).toLocaleString('en-US')} credited back against $${Math.round(cost)} of gas and yield given up, on $${capital.toLocaleString('en-US')} of capital.`) +
     cell('watch', H.totals.watch, 'Watch', 'Pays for itself and the signal is not there yet: the position is right, the timing is not.') +
-    cell('thin', H.totals.thin, 'Thin', 'The cost is a small share of the position, but the credited airdrop does not cover it.') +
-    cell('pass', H.totals.pass, 'Pass', 'Gas above 10% of the capital it needs: the plan cannot pay for itself on this chain.');
+    cell('thin', H.totals.thin, 'Thin', 'The credited airdrop covers at least half the gas and the yield given up, but not all of it: a small position can still be worth opening.') +
+    cell('pass', H.totals.pass, 'Pass', 'The credit does not cover half the cost. On this chain, at this size, the plan does not pay for the work.');
+  // The plan column is a price list; this is the shortlist. Best net per hour on the watchlist,
+  // which is the only list the bounty asks to be covered in full.
+  const best = rows
+    .filter((r) => r.wl)
+    .sort((a, b) => b.perh - a.perh)
+    .slice(0, 3)
+    .map((r, i) => `${i + 1}. <b>${esc(r.name)}</b> ${signed(r.perh)}/h on a ${usdFull(r.capital)} slice`)
+    .join('<span class="sep">·</span>');
+  el('planStrip').innerHTML += `<p class="best"><span class="k">Best on the watchlist</span>${best}</p>`;
 }
 
 /* ---------- drawing the board ---------- */
@@ -395,14 +409,14 @@ function open(slug) {
     <h3 class="sec">What it pays <span class="chain">not what it costs</span></h3>
     <dl class="kv">
       <dt>Odds a token exists at ${cohort(r.age)}</dt><dd>${Math.round(r.odds * 100)}%</dd>
-      <dt>Credited airdrop, 0.001% of the implied launch</dt><dd>$${r.airdrop.toFixed(2)}</dd>
+      <dt>Credited airdrop, 0.0001% of the implied launch</dt><dd>$${r.airdrop.toFixed(2)}</dd>
       <dt>Gas, ${4 + Math.round(r.hold / 7)} transactions on ${esc(chain)}</dt><dd>$${r.gas.toFixed(2)}</dd>
       <dt>Yield given up over ${r.hold} days</dt><dd>$${(r.cost - r.gas).toFixed(2)}</dd>
       <dt>Net, over ${r.hours} hours of work</dt><dd class="${r.net >= 0 ? 'v' : 'hl'}">${signed(r.net)} · $${r.perh.toFixed(2)}/h</dd>
       <dt>Breaks even at an implied launch of</dt><dd>${r.breakeven === null ? 'never' : usdFull(r.breakeven)}</dd>
       <dt>Verdict</dt><dd class="${r.verdict === 'farm' ? 'v' : 'hl'}">${r.verdict === 'farm' ? 'farm now' : r.verdict}</dd>
     </dl>
-    <p class="scale">The plan needs ${usdFull(r.capital)} of capital and costs ${usdFull(r.cost)}, which is ${pctOf(r.burden)} of the position. It is credited 0.001% of the implied launch, weighted by the ${Math.round(r.odds * 100)}% odds this age cohort has launched a token: ${signed(r.net)} net, or $${r.perh.toFixed(2)} an hour across ${r.hours} hours.</p>
+    <p class="scale">Every plan is priced on the same ${usdFull(r.capital)} slice, so rows compare; this one costs ${usdFull(r.cost)}, ${pctOf(r.burden)} of the slice. It is credited 0.0001% of the implied launch, weighted by the ${Math.round(r.odds * 100)}% odds this age cohort has launched a token: ${signed(r.net)} net, or $${r.perh.toFixed(2)} an hour across ${r.hours} hours.</p>
 
     <h3 class="sec">How to farm it</h3>
     <ol class="steps">${r.steps.map((s) => `<li><p>${esc(s)}</p></li>`).join('')}</ol>

@@ -51,12 +51,12 @@ console.log('detail', JSON.stringify(detail));
 await page.waitForTimeout(320);
 await shot('2-detail');
 
-// 3. a real filter: only the protocols the page says to farm now, sorted by launch signal
+// 3. a real filter: the plans that pay for themselves but whose timing is not there yet
 await page.evaluate(() => {
   window.RADAR_UI.close();
   window.RADAR_UI.setMode('radar');
   window.RADAR_UI.setView('all');
-  window.RADAR_UI.setVerdict('farm');
+  window.RADAR_UI.setVerdict('watch');
   window.RADAR_UI.setSort('signal');
 });
 const filteredCount = await page.evaluate(() => document.querySelectorAll('#board tbody tr').length);

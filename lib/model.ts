@@ -55,6 +55,10 @@ export type Fit = {
   high: number;
   /** Share of leave-one-out misses the P10-P90 band covers. */
   coverage: number;
+  /** The middle band and the share of blind errors it actually holds. */
+  mid_low: number;
+  mid_high: number;
+  coverage_mid: number;
   /** Time split: fit on the older 60%, price the younger 40% it never saw, and the flat baseline. */
   ts: { n: number; miss: number; flat: number };
   /** Two hundred random 70/30 splits: the same question without the calendar deciding the answer. */
@@ -138,9 +142,9 @@ const DAY = 86_400_000;
  *  at full strength both raised the blind miss, and the page prints both numbers. */
 const TILT_WEIGHT = 0.35;
 
-/** The launch hands one qualifying wallet 0.001% of its value, and a farm costs three hours of
+/** The launch hands one qualifying wallet 0.0001% of its value, and a farm costs three hours of
  *  hands-on work. Both are assumptions, printed on the page with the net column. */
-const AIRDROP_SHARE = 0.00001;
+const AIRDROP_SHARE = 0.000001;
 const WORK_HOURS = 3;
 
 export function parseSnapshot(text: string): Snapshot {
@@ -312,6 +316,12 @@ function fitModel(peers: { f: Features; y: number }[]): Fit {
   const low = quantile(looResiduals, 0.1);
   const high = quantile(looResiduals, 0.9);
   const inside = looResiduals.filter((r) => r >= low && r <= high).length;
+  // A band is only worth printing if it holds the share of errors it promises. The middle band is
+  // the interquartile range of the blind errors: it should hold about half of them, and the 10-90
+  // band about four fifths. Both numbers are printed beside the band they belong to.
+  const midLow = quantile(looResiduals, 0.25);
+  const midHigh = quantile(looResiduals, 0.75);
+  const inMid = looResiduals.filter((r) => r >= midLow && r <= midHigh).length;
 
   // A second blind test, on time rather than on rows: fit on the protocols that were already old
   // when the snapshot was taken, then price the younger half it never saw.
@@ -349,6 +359,9 @@ function fitModel(peers: { f: Features; y: number }[]): Fit {
     low,
     high,
     coverage: looResiduals.length > 0 ? inside / looResiduals.length : 0,
+    mid_low: midLow,
+    mid_high: midHigh,
+    coverage_mid: looResiduals.length > 0 ? inMid / looResiduals.length : 0,
     ts: { n: tsN, miss: tsN > 0 ? median(tsMisses) : 0, flat: tsN > 0 ? median(tsFlatMisses) : 0 },
     random: randomSplit(peers, pred),
     points: peers.map((r) => [Math.round(r.f.ltvl * 1000) / 1000, Math.round(r.y * 1000) / 1000]),
@@ -441,15 +454,10 @@ const GAS_PER_TX: Record<string, number> = {
 };
 const DEFAULT_GAS = 0.35;
 
-/** The smallest position that registers in a protocol of this size, in dollars. */
-function capitalFor(tvl: number): number {
-  if (tvl >= 5e9) return 400;
-  if (tvl >= 1e9) return 250;
-  if (tvl >= 2e8) return 150;
-  if (tvl >= 5e7) return 100;
-  if (tvl >= 1e7) return 75;
-  return 50;
-}
+/** Every plan is priced on the same slice, so one row can be compared with the next: a position
+ *  that shrinks with the protocol's TVL gives every row a different denominator and makes the net
+ *  column unreadable. $1,000 is the slice, on every chain, for every protocol. */
+const SLICE_USD = 1000;
 
 /** How long the position has to stay open for a snapshot to see it, from the protocol's age. */
 function holdDaysFor(age: number | null): number {
@@ -687,17 +695,17 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
     const tvl = r.p.tvl_usd ?? 0;
     const chain = r.p.chains[0] ?? 'its main chain';
     const gasTx = GAS_PER_TX[chain] ?? DEFAULT_GAS;
-    const capital = capitalFor(tvl);
+    const capital = SLICE_USD;
     const hold = holdDaysFor(r.age);
     const gas = Math.round(gasTx * (4 + Math.round(hold / 7)) * 100) / 100;
     const opportunity = (capital * 0.04 * hold) / 365;
     const cost = Math.round((gas + opportunity) * 100) / 100;
     const burden = capital > 0 ? cost / capital : 1;
-    // What the plan is worth, not just what it costs: 0.001% of the implied launch, weighted
+    // What the plan is worth, not just what it costs: 0.0001% of the implied launch, weighted
     // by the share of protocols this age that already hold a token, against everything it costs.
     const odds = oddsOf(r.age);
     const work = WORK_HOURS;
-    // What one qualifying wallet is handed if the launch gives it 0.001% of its value, weighted by
+    // What one qualifying wallet is handed if the launch gives it 0.0001% of its value, weighted by
     // the share of protocols this age that already hold a token.
     const airdrop = Math.round(r.implied * AIRDROP_SHARE * odds * 100) / 100;
     const net = Math.round((airdrop - cost) * 100) / 100;
@@ -706,7 +714,10 @@ export function buildRadar(snapshot: Snapshot): { board: Row[]; radar: Radar } {
     const breakEven = odds > 0 ? Math.round(cost / (AIRDROP_SHARE * odds)) : null;
     // The verdict is about whether to spend, not about what the protocol is worth: a plan that
     // does not clear its own cost closes whatever the implied value says.
-    const verdict = net > 0 ? (r.signal >= 55 ? 'farm' : 'watch') : burden > 0.1 ? 'pass' : 'thin';
+    // Four outcomes, each with a meaning a reader can act on: the plan pays and the timing is there,
+    // the plan pays but the timing is not, the credit covers at least half its cost, or it does not.
+    const covered = cost > 0 ? airdrop / cost : 1;
+    const verdict = net > 0 ? (r.signal >= 55 ? 'farm' : 'watch') : covered >= 0.5 ? 'thin' : 'pass';
     const row: Row = {
       rank: i + 1,
       slug: r.p.slug,

@@ -350,3 +350,22 @@ tr:hover .mark { border-color: hsl(var(--h) 45% 40%); }
 .scatter .legend .k.band { background: none; border: 1px dashed rgba(99, 168, 255, 0.6); border-radius: 0; height: 0; width: 14px; }
 .scatter .legend .sep { margin: 0 8px; color: #3f4c59; }
 .scatter .legend b { color: var(--value); font-weight: 600; }
+
+.plan-strip .best {
+  margin: 14px 0 0;
+  font: 12px/1.6 var(--mono);
+  color: #93a4b5;
+}
+.plan-strip .best .k {
+  display: inline-block;
+  margin-right: 12px;
+  padding: 2px 7px;
+  border: 1px solid #23303c;
+  border-radius: 4px;
+  color: var(--value);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 9.5px;
+}
+.plan-strip .best b { color: #d8e4ef; font-weight: 600; }
+.plan-strip .best .sep { margin: 0 8px; color: #3f4c59; }
